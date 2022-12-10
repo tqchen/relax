@@ -47,6 +47,7 @@ using relay::TupleGetItem;
 using relay::TupleGetItemNode;
 using relay::TupleNode;
 
+
 /*! \brief A shape expression which allows users to construct a shape containing PrimExpr.
  */
 class ShapeExprNode : public ExprNode {
@@ -57,6 +58,7 @@ class ShapeExprNode : public ExprNode {
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("values", &values);
     v->Visit("shape_", &shape_);
+    v->Visit("struct_info_", &struct_info_);
     v->Visit("_checked_type_", &checked_type_);
     v->Visit("span", &span);
   }
@@ -95,6 +97,7 @@ class RuntimeDepShapeNode : public ExprNode {
  public:
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("shape_", &shape_);
+    v->Visit("struct_info_", &struct_info_);
     v->Visit("_checked_type_", &checked_type_);
     v->Visit("span", &span);
   }
@@ -132,10 +135,11 @@ class VarNode : public ExprNode {
   const String& name_hint() const { return vid->name_hint; }
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("_checked_type_", &checked_type_);
     v->Visit("vid", &vid);
-    v->Visit("span", &span);
     v->Visit("shape_", &shape_);
+    v->Visit("struct_info_", &struct_info_);
+    v->Visit("_checked_type_", &checked_type_);
+    v->Visit("span", &span);
   }
 
   bool SEqualReduce(const VarNode* other, SEqualReducer equal) const {
@@ -176,9 +180,10 @@ class DataflowVarNode : public VarNode {
  public:
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("vid", &vid);
-    v->Visit("span", &span);
     v->Visit("shape_", &shape_);
+    v->Visit("struct_info_", &struct_info_);
     v->Visit("_checked_type_", &checked_type_);
+    v->Visit("span", &span);
   }
 
   bool SEqualReduce(const DataflowVarNode* other, SEqualReducer equal) const {
@@ -378,6 +383,7 @@ class SeqExprNode : public ExprNode {
     v->Visit("blocks", &blocks);
     v->Visit("body", &body);
     v->Visit("shape_", &shape_);
+    v->Visit("struct_info_", &struct_info_);
     v->Visit("_checked_type_", &checked_type_);
     v->Visit("span", &span);
   }
@@ -426,8 +432,9 @@ class FunctionNode : public BaseFuncNode {
     v->Visit("ret_shape", &ret_shape);
     v->Visit("_checked_type_", &checked_type_);
     v->Visit("shape_", &shape_);
-    v->Visit("span", &span);
+    v->Visit("struct_info_", &struct_info_);
     v->Visit("attrs", &attrs);
+    v->Visit("span", &span);
   }
 
   bool SEqualReduce(const FunctionNode* other, SEqualReducer equal) const {
@@ -495,6 +502,7 @@ class ExternFuncNode : public BaseFuncNode {
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("global_symbol", &global_symbol);
+    v->Visit("struct_info_", &struct_info_);
     v->Visit("span", &span);
   }
 
