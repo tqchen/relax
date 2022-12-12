@@ -47,7 +47,6 @@ using relay::TupleGetItem;
 using relay::TupleGetItemNode;
 using relay::TupleNode;
 
-
 /*! \brief A shape expression which allows users to construct a shape containing PrimExpr.
  */
 class ShapeExprNode : public ExprNode {

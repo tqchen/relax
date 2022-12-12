@@ -250,6 +250,7 @@ class ExprVisitor : public ExprFunctor<void(const Expr&)> {
 
   virtual void VisitType(const Type& t);
   virtual void VisitSpan(const Span& span);
+  virtual void VisitPrimExpr(const PrimExpr& expr);
 
  private:
   using TSelf = ExprVisitor;
@@ -302,6 +303,13 @@ class ExprMutatorBase : public ExprFunctor<Expr(const Expr&)> {
    * visitor for types which transform them appropriately.
    */
   virtual Type VisitType(const Type& t);
+
+  /*!
+   * \brief Used to visit the PrimExpr inside of expressions.
+   *
+   * Can be overloaded to transform the shape expressions.
+   */
+  virtual PrimExpr VisitPrimExpr(const PrimExpr& expr);
 };
 
 /*!
