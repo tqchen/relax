@@ -20,6 +20,7 @@
 #define TVM_SCRIPT_IR_BUILDER_RELAX_IR_H_
 
 #include <tvm/relax/expr.h>
+#include <tvm/relax/struct_info.h>
 #include <tvm/script/ir_builder/base.h>
 #include <tvm/script/ir_builder/relax/frame.h>
 
@@ -58,13 +59,14 @@ class ShapedType : public runtime::ObjectRef {
 };
 
 /*!
- * \brief Create a ShapedType for a DynTensor.
+ * \brief Create a TensorStructInfo.
  * \param shape The shape of the tensor. It's runtime dependent if `shape` is None.
  * \param dtype The element data type of the tensor. It's runtime dependent if `dtype` is None.
  * \param ndim The number of dimensions of the tensor. It's runtime dependent if `ndim` is -1.
- * \return The ShapedType that is only used in ir_builder.
+ * \return The TensorStructInfo.
  */
-TVM_DLL ShapedType Tensor(Optional<Array<PrimExpr>> shape, DataType dtype, int ndim = -1);
+TVM_DLL tvm::relax::TensorStructInfo Tensor(Optional<Array<PrimExpr>> shape, DataType dtype,
+                                            int ndim = -1);
 
 TVM_DLL ShapedType CreateShapedTuple(Array<Type> types, Array<Optional<tvm::relax::Expr>> shapes);
 
@@ -162,11 +164,13 @@ TVM_DLL Optional<tvm::relax::Var> EmitMatchShape(const tvm::relax::Expr& value, 
  * \param var The input var to be annotated.
  * \param anno_type The annotated type.
  * \param anno_shape The annotated shape, which can be undefined.
+ * \param anno_sinfo The annotated struct info, which can be undefined.
  * \note This function will check if the type of var is compatible with the annotated type.
  * And we annotate to the var with more detailed type.
  */
 TVM_DLL void AnnotateTypeShape(const tvm::relax::Var& var, const Type& anno_type,
-                               const Optional<tvm::relax::Expr>& anno_shape);
+                               const Optional<tvm::relax::Expr>& anno_shape,
+                               const Optional<tvm::relax::StructInfo>& anno_sinfo);
 
 ///////////////////////////// If Then Else /////////////////////////////
 

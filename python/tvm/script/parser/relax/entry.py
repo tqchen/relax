@@ -21,14 +21,15 @@ from typing import List, Optional
 from typing import TypeVar as _TypeVar
 from typing import Union
 
+from tvm import relax
 from tvm.ir import FuncType, TypeConstraint, TypeVar
-from tvm.relax import DynTensorType, Expr, Function
+from tvm.relax import DynTensorType, Expr, Function, StructInfo
 from tvm.relax import Tuple as RxTuple
 from tvm.relax import Type, Var
 from tvm.runtime import ObjectGeneric
 from tvm.tir import PrimExpr
 
-from ...ir_builder.relax import ShapedType, tensor, create_shaped_tuple
+from ...ir_builder.relax import ShapedType, create_shaped_tuple, tensor
 from .._core import parse, utils
 
 FType = _TypeVar("FType", bound=_Callable)
@@ -54,7 +55,7 @@ class TensorProxy(ObjectGeneric):
         shape: Optional[List[Union[PrimExpr, str]]] = None,
         dtype: str = None,
         ndim: int = -1,
-    ) -> ShapedType:
+    ) -> relax.TensorStructInfo:
         # scalar tensor case
         if shape is not None and len(shape) == 0:
             shape = []
@@ -106,16 +107,12 @@ class CallableProxy:
 
     def __call__(
         self,
-        arg_types: List[Union[Type, ShapedType]],
-        ret_type: Type,
-        type_params: Optional[List[TypeVar]] = None,
-        type_constraints: Optional[List[TypeConstraint]] = None,
-    ) -> FuncType:
-        if isinstance(arg_types, ShapedType):
-            arg_types = [arg_types]
-        arg_types = [_convert_type(ty) for ty in arg_types]
-        ret_type = _convert_type(ret_type)
-        return FuncType(arg_types, ret_type, type_params, type_constraints)
+        params: List[StructInfo],
+        ret: StructInfo,
+    ) -> relax.FuncStructInfo:
+        if not isinstance(params, (list, tuple)):
+            params = [params]
+        return relax.FuncStructInfo(params, ret)
 
     def __getitem__(self, keys) -> Var:
         return self(*keys)  # pylint: disable=no-member # type: ignore
@@ -137,19 +134,26 @@ class TupleProxy:
 
     def __call__(
         self,
-        *fields: List[Union[Expr, Type, ShapedType]],
-    ) -> Union[Expr, ShapedType]:
+        *fields: List[Union[Expr, Type, StructInfo]],
+    ) -> Union[Expr, StructInfo]:
         if len(fields) == 1 and isinstance(fields[0], (tuple, list)):
             fields = fields[0]
 
         if all([isinstance(f, Expr) for f in fields]):
             return RxTuple(fields)
-        elif all([isinstance(f, (ShapedType, Type, TensorProxy)) for f in fields]):
-            types = [_convert_type(ty) for ty in fields]
-            shapes = [ty.shape if isinstance(ty, ShapedType) else None for ty in fields]
-            return create_shaped_tuple(types, shapes)
         else:
-            raise TypeError(f"Invalid tuple type: {fields}")
+            fields = list(fields)
+            for i in range(len(fields)):
+                if callable(fields[i]):
+                    fields[i] = fields[i]()
+            if all([isinstance(f, (ShapedType, Type, TensorProxy)) for f in fields]):
+                types = [_convert_type(ty) for ty in fields]
+                shapes = [ty.shape if isinstance(ty, ShapedType) else None for ty in fields]
+                return create_shaped_tuple(types, shapes)
+            elif all([isinstance(f, StructInfo) for f in fields]):
+                return relax.TupleStructInfo(fields)
+            else:
+                raise TypeError(f"Invalid tuple type: {fields}")
 
     def __getitem__(self, keys) -> Var:
         return self(*keys)  # pylint: disable=no-member # type: ignore

@@ -16,15 +16,15 @@
 # under the License.
 # pylint: disable=invalid-name, unused-import
 """The struct info nodes of the Relax language."""
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import tvm._ffi
 import tvm
 
-from tvm.ir import Span, Node, EnvFunc, Array
+from tvm.ir import Span, Node, EnvFunc, Array, Type
 from tvm.tir import PrimExpr
 from .expr import Expr, ShapeExpr
-from . import _ffi_api
+from . import _ffi_api, ty, expr
 
 
 class StructInfo(Node):
@@ -91,6 +91,11 @@ class ShapeStructInfo(StructInfo):
 
 @tvm._ffi.register_object("relax.TensorStructInfo")
 class TensorStructInfo(StructInfo):
+    shape: Optional[Expr]
+    dtype: tvm.DataType
+    ndim: int
+    span: Span
+
     """StructInfo of a Tensor value.
 
     Parameters
@@ -170,3 +175,29 @@ class FuncStructInfo(StructInfo):
         info: FuncStructInfo
         """
         return _ffi_api.FuncStructInfoOpaqueFunc(derive_func, span)
+
+
+# TODO(Siyuan, tqchen): remove the following lines and implement the similar function in C++
+def get_type_shape_from_structure_info(
+    struct_info: StructInfo,
+) -> Tuple[Type, Optional[Expr]]:
+    if isinstance(struct_info, TensorStructInfo):
+        return ty.DynTensorType(struct_info.ndim, struct_info.dtype), struct_info.shape
+    elif isinstance(struct_info, TupleStructInfo):
+        type_shape = [get_type_shape_from_structure_info(s) for s in struct_info.fields]
+        type_, shape_ = list(zip(*type_shape))
+        if [s is not None for s in shape_]:
+            shape_ = expr.Tuple(shape_)
+        else:
+            shape_ = expr.RuntimeDepShape()
+        return ty.TupleType(type_), shape_
+    elif isinstance(struct_info, ShapeStructInfo):
+        return ty.ShapeType(), None
+    elif isinstance(struct_info, ObjectStructInfo):
+        return ty.ObjectType(), None
+    elif isinstance(struct_info, FuncStructInfo):
+        arg_types = [get_type_shape_from_structure_info(s)[0] for s in struct_info.params]
+        ret_type = get_type_shape_from_structure_info(struct_info.ret)[0]
+        return ty.FuncType(arg_types, ret_type), None
+    else:
+        raise ValueError(f"Unsupported structure info {struct_info}")

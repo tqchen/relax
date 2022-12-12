@@ -58,7 +58,10 @@ ShapedType::ShapedType(Type type, Optional<tvm::relax::Expr> shape) {
 
 TVM_REGISTER_NODE_TYPE(ShapedTypeNode);
 
-ShapedType Tensor(Optional<Array<PrimExpr>> shape, DataType dtype, int ndim) {
+using tvm::relax::TensorStructInfo;
+using tvm::relax::TupleStructInfo;
+
+TensorStructInfo Tensor(Optional<Array<PrimExpr>> shape, DataType dtype, int ndim) {
   using namespace tvm::relax;
   ICHECK_GE(ndim, -1) << "ndim must be >= -1, but got " << ndim;
   if (shape.defined() && ndim >= 0) {
@@ -67,11 +70,12 @@ ShapedType Tensor(Optional<Array<PrimExpr>> shape, DataType dtype, int ndim) {
   } else if (shape.defined()) {
     ndim = shape.value().size();
   }
-  Expr shape_expr = RuntimeDepShape();
   if (shape.defined()) {
-    shape_expr = ShapeExpr(shape.value());
+    ShapeExpr shape_expr(shape.value());
+    return TensorStructInfo(shape_expr, dtype);
+  } else {
+    return TensorStructInfo(dtype, ndim);
   }
-  return ShapedType(DynTensorType(ndim, dtype), shape_expr);
 }
 
 ShapedType CreateShapedTuple(Array<Type> types, Array<Optional<tvm::relax::Expr>> shapes) {
@@ -265,7 +269,8 @@ TVM_REGISTER_GLOBAL("script.ir_builder.relax.EmitMatchShape").set_body_typed(Emi
 ///////////////////////////// Type Deduce //////////////////////////////
 
 void AnnotateTypeShape(const tvm::relax::Var& var, const Type& anno_type,
-                       const Optional<tvm::relax::Expr>& anno_shape) {
+                       const Optional<tvm::relax::Expr>& anno_shape,
+                       const Optional<tvm::relax::StructInfo>& anno_sinfo) {
   using tvm::relax::IsBaseOf;
   if (var->checked_type_.defined()) {
     const Type& var_type = var->checked_type();
@@ -292,6 +297,9 @@ void AnnotateTypeShape(const tvm::relax::Var& var, const Type& anno_type,
 
   var->checked_type_ = anno_type;
   var->shape_ = anno_shape;
+
+  // TODO(@Hzfengsy, @tqchen): add struct info checks
+  var->struct_info_ = anno_sinfo;
 }
 
 TVM_REGISTER_GLOBAL("script.ir_builder.relax.AnnotateTypeShape").set_body_typed(AnnotateTypeShape);
