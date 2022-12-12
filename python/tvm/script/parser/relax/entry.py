@@ -22,14 +22,13 @@ from typing import TypeVar as _TypeVar
 from typing import Union
 
 from tvm import relax
-from tvm.ir import FuncType, TypeConstraint, TypeVar
 from tvm.relax import DynTensorType, Expr, Function, StructInfo
 from tvm.relax import Tuple as RxTuple
 from tvm.relax import Type, Var
 from tvm.runtime import ObjectGeneric
 from tvm.tir import PrimExpr
 
-from ...ir_builder.relax import ShapedType, create_shaped_tuple, tensor
+from ...ir_builder.relax import tensor
 from .._core import parse, utils
 
 FType = _TypeVar("FType", bound=_Callable)
@@ -92,17 +91,12 @@ class CallableProxy:
 
     Parameters
     ----------
-    arg_types : List[Union[Type, ShapedType]]
-        The argument types
+    params : List[StructInfo]
+        The argument StructInfo
 
-    ret_type : Type
-        The return type.
+    ret : StructInfo
+        The return StructInfo.
 
-    type_params : Optional[List[TypeVar]]
-        The type parameters
-
-    type_constraints : Optional[List[TypeConstraint]]
-        The type constraints.
     """
 
     def __call__(
@@ -146,11 +140,7 @@ class TupleProxy:
             for i in range(len(fields)):
                 if callable(fields[i]):
                     fields[i] = fields[i]()
-            if all([isinstance(f, (ShapedType, Type, TensorProxy)) for f in fields]):
-                types = [_convert_type(ty) for ty in fields]
-                shapes = [ty.shape if isinstance(ty, ShapedType) else None for ty in fields]
-                return create_shaped_tuple(types, shapes)
-            elif all([isinstance(f, StructInfo) for f in fields]):
+            if all([isinstance(f, StructInfo) for f in fields]):
                 return relax.TupleStructInfo(fields)
             else:
                 raise TypeError(f"Invalid tuple type: {fields}")
@@ -177,17 +167,3 @@ def match_shape(value: Expr, pattern: List[PrimExpr]):
     if pattern is None:
         raise ValueError("pattern of match_shape cannot be None")
     return MatchShapePair(value, pattern)
-
-
-################################ utils #################################
-
-
-def _convert_type(ty: Union[Type, ShapedType, TensorProxy]) -> Type:
-    if isinstance(ty, TensorProxy):
-        return ty().type
-    if isinstance(ty, ShapedType):
-        return ty.type
-    elif isinstance(ty, Type):
-        return ty
-    else:
-        raise TypeError(f"Expect a Type or ShapedType, but got: {ty}")

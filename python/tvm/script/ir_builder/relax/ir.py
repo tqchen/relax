@@ -21,7 +21,6 @@ import functools
 from typing import Dict, List, Optional, Tuple, Union
 
 import tvm
-from tvm._ffi import register_object as _register_object
 from tvm.ir import Type
 from tvm.relax import Call, Expr, ExternFunc, ShapeExpr, TupleGetItem, TupleType, Var, const
 from tvm.relax.struct_info import StructInfo, TensorStructInfo, get_type_shape_from_structure_info
@@ -41,7 +40,6 @@ from tvm.relax.op import (
     unique,
     memory,
 )
-from tvm.relax.ty import ObjectType, ShapeType, DynTensorType
 from tvm.relax.utils import convert_to_expr
 from tvm.runtime import Object as tvm_Object
 from tvm.tir import PrimExpr
@@ -50,14 +48,6 @@ from ..tir import var as _tir_var
 from . import _ffi_api, frame
 
 ############################## Tensor Type ##############################
-
-
-@_register_object("script.ir_builder.relax.ShapedType")
-class ShapedType(tvm_Object):
-    """A temporary Tensor type for `R.Tensor` in ir_builder."""
-
-    type: DynTensorType
-    shape: Optional[Expr]
 
 
 def tensor(
@@ -89,22 +79,6 @@ def tensor(
                 shape[i] = _tir_var("int64", s)
 
     return _ffi_api.Tensor(shape, dtype, ndim)  # pylint: disable=no-member # type: ignore
-
-
-def create_shaped_tuple(types: List[Type], shapes: List[Optional[Expr]]) -> ShapedType:
-    """Helper function for `R.Tuple` in parser
-    Parameters
-    ----------
-    types: List[Type]
-        The list of type of it's fields
-    shapes: List[Optional[Expr]]
-        The list of shape of it's fields.
-    Returns
-    -------
-    tuple_type: ShapedType
-        The ShapedType that is only used in ir_builder.
-    """
-    return _ffi_api.CreateShapedTuple(types, shapes)  # pylint: disable=no-member # type: ignore
 
 
 ############################## Other Types ##############################
@@ -417,7 +391,6 @@ __all__ = [
     "If",
     "Object",
     "Shape",
-    "ShapedType",
     "Then",
     "TupleGetItem",
     "Void",
@@ -428,7 +401,6 @@ __all__ = [
     "call_packed",
     "call_tir",
     "const",
-    "create_shaped_tuple",
     "dataflow",
     "emit",
     "emit_match_shape",

@@ -29,7 +29,7 @@ from ...ir_builder import ir as I
 from ...ir_builder import relax as R
 from ...ir_builder.base import IRBuilder
 from .._core import Parser, dispatch, doc
-from .entry import MatchShapePair, ShapedType, Tensor
+from .entry import MatchShapePair, Tensor
 
 
 def bind_assign_value(self: Parser, node: doc.expr, var_name: str, value: Any) -> Any:
@@ -118,12 +118,7 @@ def eval_type_annotation(
         type_, shape = relax.struct_info.get_type_shape_from_structure_info(annotation)
         shape = eval_shape_annotation(self, node, shape)
         return type_, shape, annotation
-    elif isinstance(annotation, ShapedType):
-        # Old path: should be removed
-        shape = eval_shape_annotation(self, node, annotation.shape)
-        return annotation.type, shape, None
     else:
-        # Old path: should be removed
         if not isinstance(annotation, Type):
             self.report_error(node, f"Unsupported type annotation {type(annotation)}")
         return annotation, None, None

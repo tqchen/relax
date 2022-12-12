@@ -49,15 +49,6 @@ TVM_STATIC_IR_FUNCTOR(Namer, vtable)
 
 ////////////////////////////// Tensor Type //////////////////////////////
 
-ShapedType::ShapedType(Type type, Optional<tvm::relax::Expr> shape) {
-  auto n = make_object<ShapedTypeNode>();
-  n->type = std::move(type);
-  n->shape = std::move(shape);
-  data_ = std::move(n);
-}
-
-TVM_REGISTER_NODE_TYPE(ShapedTypeNode);
-
 using tvm::relax::TensorStructInfo;
 using tvm::relax::TupleStructInfo;
 
@@ -78,29 +69,7 @@ TensorStructInfo Tensor(Optional<Array<PrimExpr>> shape, DataType dtype, int ndi
   }
 }
 
-ShapedType CreateShapedTuple(Array<Type> types, Array<Optional<tvm::relax::Expr>> shapes) {
-  CHECK_EQ(types.size(), shapes.size())
-      << "ValueError: The number of types and shapes mismatched, got " << types.size() << " vs "
-      << shapes.size();
-  Array<tvm::relax::Expr> _shapes;
-  bool has_none_shape = false;
-  for (const auto& shape : shapes) {
-    if (shape.defined()) {
-      _shapes.push_back(shape.value());
-    } else {
-      has_none_shape = true;
-      break;
-    }
-  }
-  Optional<tvm::relax::Expr> final_shape = NullOpt;
-  if (!has_none_shape) {
-    final_shape = tvm::relax::Tuple(_shapes);
-  }
-  return ShapedType(TupleType(types), final_shape);
-}
-
 TVM_REGISTER_GLOBAL("script.ir_builder.relax.Tensor").set_body_typed(Tensor);
-TVM_REGISTER_GLOBAL("script.ir_builder.relax.CreateShapedTuple").set_body_typed(CreateShapedTuple);
 
 /////////////////////////////// Function ////////////////////////////////
 
