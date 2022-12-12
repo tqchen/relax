@@ -100,7 +100,12 @@ def function() -> frame.FunctionFrame:
     return _ffi_api.Function()  # pylint: disable=no-member # type: ignore
 
 
-def arg(name: str, type: Union[Type, StructInfo], shape: Optional[ShapeExpr] = None) -> Var:
+def arg(
+    name: str,
+    type: Union[Type, StructInfo],
+    shape: Optional[ShapeExpr] = None,
+    struct_info: Optional[StructInfo] = None,
+) -> Var:
     """Add a parameter to the last function frame.
     Parameters
     ----------
@@ -124,7 +129,7 @@ def arg(name: str, type: Union[Type, StructInfo], shape: Optional[ShapeExpr] = N
     elif not isinstance(type, Type):
         raise TypeError(f"Expect a Type or a StructInfo, but got {type}")
 
-    return _ffi_api.Arg(name, type, shape)  # pylint: disable=no-member # type: ignore
+    return _ffi_api.Arg(name, type, shape, struct_info)  # pylint: disable=no-member # type: ignore
 
 
 def func_name(name: str) -> None:

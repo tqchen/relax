@@ -54,9 +54,11 @@ TVM_DLL FunctionFrame Function();
  * \param name The name of the parameter.
  * \param type The type of the parameter.
  * \param shape The shape of the parameter.
+ * \param struct_info The struct_info of the parameter.
  * \return The created function parameter var.
  */
-TVM_DLL tvm::relax::Var Arg(const String& name, const Type& type, const tvm::relax::Expr& shape);
+TVM_DLL tvm::relax::Var Arg(const String& name, const Type& type, const tvm::relax::Expr& shape,
+                            const Optional<tvm::relax::StructInfo>& struct_info);
 
 /*!
  * \brief Specify the name of the last function frame.

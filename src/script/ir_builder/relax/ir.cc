@@ -84,9 +84,11 @@ FunctionFrame Function() {
   return FunctionFrame(n);
 }
 
-tvm::relax::Var Arg(const String& name, const Type& type, const tvm::relax::Expr& shape) {
+tvm::relax::Var Arg(const String& name, const Type& type, const tvm::relax::Expr& shape,
+                    const Optional<tvm::relax::StructInfo>& struct_info) {
   FunctionFrame frame = FindFunctionFrame("R.Arg");
   tvm::relax::Var var(name, shape, type);
+  var->struct_info_ = struct_info;
   frame->params.push_back(var);
   return var;
 }
