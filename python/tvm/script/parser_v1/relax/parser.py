@@ -424,7 +424,7 @@ class RelaxTransformer(Transformer):
             if ty.id.name == "Tensor":
                 return (relax.DynTensorType(ndim=-1, dtype=None, span=span), None)
             elif ty.id.name == "Shape":
-                return (relax.ShapeType(span), None)
+                return (relax.ShapeType(ndim=-1, span=span), None)
             elif ty.id.name == "Object":
                 return (relax.ObjectType(span), None)
             elif ty.id.name == "Dim":
@@ -1096,7 +1096,7 @@ class RelaxTransformer(Transformer):
             elif val.id.name == "Object":
                 return relax.ObjectType(self.to_tvm_span(val.span))
             elif val.id.name == "Shape":
-                return relax.ShapeType(self.to_tvm_span(val.span))
+                return relax.ShapeType(span=self.to_tvm_span(val.span))
             elif val.id.name == "Void":
                 return relay.TupleType(None, self.to_tvm_span(val.span))
             else:
