@@ -454,12 +454,14 @@ Function::Function(Array<Var> params, Expr body, Type ret_type, Expr ret_shape, 
     param_sinfo.push_back(GetStructInfo(param));
   }
 
-  StructInfo ret_info;
+  StructInfo ret_info = GetStructInfo(body);
 
   if (ret_type.defined()) {
-    ret_info = StructInfoFromTypeLegacyShapeHint(ret_type, ret_shape);
-  } else {
-    ret_info = GetStructInfo(body);
+    StructInfo given_info = StructInfoFromTypeLegacyShapeHint(ret_type, ret_shape);
+    CHECK(IsBaseOf(given_info, ret_info))
+        << "relax.Function requires the deduced body->struct_info to be a subtype of the "
+           "annotated struct_info but meet body->struct_info: "
+        << ret_info << ", ret_info: " << given_info;
   }
 
   FuncStructInfo func_sinfo(param_sinfo, ret_info);
