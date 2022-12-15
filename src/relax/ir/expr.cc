@@ -468,8 +468,8 @@ Function::Function(Array<Var> params, Expr body, Type ret_type, Expr ret_shape, 
   ObjectPtr<FunctionNode> n = make_object<FunctionNode>();
   n->params = std::move(params);
   n->body = std::move(body);
-  n->ret_type = std::move(ret_type);
-  n->ret_shape = std::move(ret_shape);
+  n->ret_type = GetStaticType(ret_info);
+  n->ret_shape = GetLegacyShapeHint(ret_info).value_or(ret_shape);
   n->struct_info_ = func_sinfo;
   n->checked_type_ = GetStaticType(func_sinfo);
   n->attrs = std::move(attrs);
@@ -485,15 +485,29 @@ TVM_REGISTER_GLOBAL("relax.Function")
 
 Function Function::CreateUnchecked(Array<Var> params, Expr body, Type ret_type, Expr ret_shape,
                                    DictAttrs attrs, Span span) {
+  // TODO(@Hzfengsy): revisit `CreateUnchecked` after the parser_v1 removed
+
+  Array<StructInfo> param_sinfo;
+
   for (Var param : params) {
     ICHECK(param->checked_type_.defined())
         << "relax.Function requires params to contain checked_type_.";
+    param_sinfo.push_back(GetStructInfo(param));
+  }
+
+  StructInfo ret_info;
+
+  if (ret_type.defined()) {
+    ret_info = StructInfoFromTypeLegacyShapeHint(ret_type, ret_shape);
+  } else {
+    ret_info = FuncStructInfo::OpaqueFunc();
   }
 
   // set the fields
   ObjectPtr<FunctionNode> n = make_object<FunctionNode>();
   n->params = std::move(params);
   n->body = std::move(body);
+  n->struct_info_ = FuncStructInfo(param_sinfo, ret_info);
   n->ret_type = std::move(ret_type);
   n->ret_shape = std::move(ret_shape);
   n->attrs = std::move(attrs);
