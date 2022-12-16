@@ -182,14 +182,6 @@ TVM_DLL bool IsBaseOf(const StructInfo& base, const StructInfo& derived,
 TVM_DLL StructInfo StructInfoLCA(const StructInfo& lhs, const StructInfo& rhs,
                                  arith::Analyzer* ana = nullptr);
 
-/*!
- * \brief Collect the shape vars and their values defined inside the struct_info.
- *
- * \param struct_info The given struct info
- * \return The map from defined shape vars to the values.
- */
-TVM_DLL Map<tir::Var, PrimExpr> CollectShapeVar(const StructInfo& struct_info);
-
 //-----------------------------------
 // General IR analysis
 //----------------------------------

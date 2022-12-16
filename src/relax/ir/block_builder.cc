@@ -26,6 +26,7 @@
 #include <tvm/relax/expr_functor.h>
 #include <tvm/relax/op_attr_types.h>
 #include <tvm/relax/struct_info.h>
+#include <tvm/relax/struct_info_functor.h>
 #include <tvm/relax/type.h>
 #include <tvm/relax/type_analysis.h>
 #include <tvm/relax/utils.h>
@@ -192,7 +193,7 @@ class BlockBuilderImpl : public BlockBuilderNode {
   void BeginScope(Optional<Array<Var>> params) final {
     Map<tir::Var, PrimExpr> shape_var_map;
     for (const Var& var : params.value_or(Array<Var>())) {
-      const Map<tir::Var, PrimExpr>& var_map = CollectShapeVar(GetStructInfo(var));
+      const Map<tir::Var, PrimExpr>& var_map = StructInfoVarCollector::Collect(GetStructInfo(var));
       for (const auto& kv : var_map) {
         const tir::Var& shape_var = kv.first;
         const PrimExpr& shape_expr = kv.second;
@@ -451,6 +452,39 @@ class BlockBuilderImpl : public BlockBuilderNode {
       ctx_func_dedup_map_->emplace(func, gv);
     }
   }
+
+  class StructInfoVarCollector : public StructInfoVisitor {
+   public:
+    static Map<tir::Var, PrimExpr> Collect(const StructInfo& struct_info) {
+      StructInfoVarCollector collector;
+      collector(struct_info);
+      return collector.shape_var_map_;
+    }
+
+   private:
+    void VisitStructInfo_(const TensorStructInfoNode* op) final {
+      if (const auto* shape_expr = op->shape.as<ShapeExprNode>()) {
+        for (const PrimExpr& s : shape_expr->values) {
+          // Only collect single var defined shape. Ignore something like `R.Tensor((m + 1, n + 1))
+          if (const auto* var = s.as<tir::VarNode>()) {
+            shape_var_map_.Set(GetRef<tir::Var>(var), s);
+          }
+        }
+      }
+    }
+
+    void VisitStructInfo_(const ShapeStructInfoNode* op) final {
+      for (const PrimExpr& s : op->values.value_or(Array<PrimExpr>())) {
+        // Only collect single var defined shape. Ignore something like `R.Tensor((m + 1, n + 1))
+        if (const auto* var = s.as<tir::VarNode>()) {
+          shape_var_map_.Set(GetRef<tir::Var>(var), s);
+        }
+      }
+    }
+
+   private:
+    Map<tir::Var, PrimExpr> shape_var_map_;
+  };
 };
 
 //---------------------------------------
