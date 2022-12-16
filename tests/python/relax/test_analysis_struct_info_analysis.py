@@ -401,5 +401,27 @@ def test_struct_info_lca():
     _check_lca(fopaque2(), fn_info_shape(1), fopaque2())
 
 
+def test_collect_shape_var():
+    def _check_var_map(actually, expected):
+        assert len(actually) == len(expected)
+        for k, v in expected.items():
+            assert actually.get(k, None) == v
+
+    n, m = tir.Var("n", "int64"), tir.Var("m", "int64")
+    x = rx.TensorStructInfo([n, m], "float32")
+    _check_var_map(rx.analysis.collect_shape_var(x), {n: n, m: m})
+
+    y = rx.TensorStructInfo([n + 1, m], "float32")
+    _check_var_map(rx.analysis.collect_shape_var(y), {m: m})
+
+    p = rx.TupleStructInfo(
+        (rx.TensorStructInfo([n, m], "float32"), rx.TensorStructInfo([n, m], "float32"))
+    )
+    q = rx.TupleStructInfo(
+        (rx.TensorStructInfo([n + 1, m], "float32"), rx.TensorStructInfo([n, m + 1], "float32"))
+    )
+    _check_var_map(rx.analysis.collect_shape_var(p), {n: n, m: m})
+
+
 if __name__ == "__main__":
     tvm.testing.main()

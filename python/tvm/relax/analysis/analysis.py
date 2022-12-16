@@ -96,7 +96,7 @@ def erase_to_well_defined(
 
 
 def struct_info_lca(lhs: StructInfo, rhs: StructInfo) -> StructInfo:
-    """Unify the two struct info their least common acenstor.
+    """Unify the two struct info their least common accentor.
 
     Parameters
     ----------
@@ -112,6 +112,22 @@ def struct_info_lca(lhs: StructInfo, rhs: StructInfo) -> StructInfo:
         The corresponding lca result.
     """
     return _ffi_api.StructInfoLCA(lhs, rhs)  # type: ignore
+
+
+def collect_shape_var(struct_info: StructInfo) -> Dict[tir.Var, tir.PrimExpr]:
+    """Collect the shape vars and their values defined inside the struct_info.
+
+    Parameters
+    ----------
+    struct_info: StructInfo
+        The given struct info
+
+    Returns
+    -------
+    ret : Dict[tir.Var, tir.PrimExpr]
+        The map from defined shape vars to the values.
+    """
+    return _ffi_api.CollectShapeVar(struct_info)  # type: ignore
 
 
 def post_order_visit(expr, fvisit):

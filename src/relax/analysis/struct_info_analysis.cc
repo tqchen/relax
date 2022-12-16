@@ -639,5 +639,49 @@ TVM_REGISTER_GLOBAL("relax.analysis.StructInfoLCA")
     .set_body_typed([](const StructInfo& lhs, const StructInfo& rhs) {
       return StructInfoLCA(lhs, rhs);
     });
+
+//--------------------------
+// CollectSymbolicShapeVar
+//--------------------------
+
+class ShapeVarCollector : public StructInfoVisitor {
+ public:
+  static Map<tir::Var, PrimExpr> Collect(const StructInfo& struct_info) {
+    ShapeVarCollector collector;
+    collector(struct_info);
+    return collector.shape_var_map_;
+  }
+
+ private:
+  void VisitStructInfo_(const TensorStructInfoNode* op) final {
+    if (const auto* shape_expr = op->shape.as<ShapeExprNode>()) {
+      for (const PrimExpr& s : shape_expr->values) {
+        // Only collect single var defined shape. Ignore something like `R.Tensor((m + 1, n + 1))
+        if (const auto* var = s.as<tir::VarNode>()) {
+          shape_var_map_.Set(GetRef<tir::Var>(var), s);
+        }
+      }
+    }
+  }
+
+  void VisitStructInfo_(const ShapeStructInfoNode* op) final {
+    for (const PrimExpr& s : op->values.value_or(Array<PrimExpr>())) {
+      // Only collect single var defined shape. Ignore something like `R.Tensor((m + 1, n + 1))
+      if (const auto* var = s.as<tir::VarNode>()) {
+        shape_var_map_.Set(GetRef<tir::Var>(var), s);
+      }
+    }
+  }
+
+ private:
+  Map<tir::Var, PrimExpr> shape_var_map_;
+};
+
+Map<tir::Var, PrimExpr> CollectShapeVar(const StructInfo& struct_info) {
+  return ShapeVarCollector::Collect(struct_info);
+}
+
+TVM_REGISTER_GLOBAL("relax.analysis.CollectShapeVar").set_body_typed(CollectShapeVar);
+
 }  // namespace relax
 }  // namespace tvm
