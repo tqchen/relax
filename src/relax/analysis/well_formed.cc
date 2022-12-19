@@ -287,6 +287,15 @@ class WellFormedChecker : public relax::ExprVisitor,
     }
   }
 
+  void VisitBinding_(const MatchCastNode* binding) {
+    this->VisitExpr(binding->value);
+    // define the vars
+    WithMode(VisitMode::kMatchVarDef, [&]() { this->VisitStructInfo(binding->struct_info); });
+
+    this->VisitStructInfo(binding->struct_info);
+    this->VisitVarDef(binding->var);
+  }
+
   void VisitBindingBlock_(const DataflowBlockNode* block) {
     is_dataflow_ = true;
     for (Binding binding : block->bindings) {
