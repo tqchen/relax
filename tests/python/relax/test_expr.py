@@ -21,6 +21,22 @@ from tvm import relax as rx
 import numpy as np
 
 
+def _check_equal(x, y, map_free_vars=False):
+    tvm.ir.assert_structural_equal(x, y, map_free_vars)
+    tvm.ir.assert_structural_equal(y, x, map_free_vars)
+
+    xhash = tvm.ir.structural_hash(x, map_free_vars)
+    yhash = tvm.ir.structural_hash(y, map_free_vars)
+
+    assert xhash == yhash
+
+
+def _check_json_roundtrip(x):
+    xret = tvm.ir.load_json(tvm.ir.save_json(x))
+    _check_equal(x, xret, map_free_vars=True)
+    return xret
+
+
 def test_var() -> None:
     v0 = rx.Var("v0")
     assert v0.name_hint == "v0"
@@ -79,6 +95,17 @@ def test_match_shape() -> None:
     for s0, s1 in zip(b1.var.shape, [m, n]):
         assert s0 == s1
     assert b1.var.checked_type == rx.DynTensorType(2, "float32")
+
+
+def test_match_cast() -> None:
+    m = tir.Var("m", dtype="int64")
+    n = tir.Var("n", dtype="int64")
+    ivalue = rx.Var("input_value")
+    sinfo = rx.TensorStructInfo([n, m], "float32")
+    b0 = rx.MatchCast(rx.Var("v"), ivalue, sinfo)
+    assert b0.value.same_as(ivalue)
+    assert b0.struct_info == sinfo
+    _check_json_roundtrip(b0)
 
 
 def test_var_binding() -> None:

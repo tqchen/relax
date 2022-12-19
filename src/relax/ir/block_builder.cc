@@ -271,6 +271,20 @@ class BlockBuilderImpl : public BlockBuilderNode {
     return var;
   }
 
+  Var EmitMatchCast(Expr value, StructInfo struct_info, String name_hint) final {
+    value = this->Normalize(value);
+
+    BlockFrame* cur_frame = CurrentBlockFrame();
+    Var var = CreateVar(cur_frame->is_dataflow, name_hint);
+    UpdateStructInfo(var, struct_info);
+
+    MatchCast match_cast(var, value, struct_info);
+    cur_frame->bindings.push_back(match_cast);
+    // NOTE match shape do not follow simple binding rule
+    // as a result should not appear in binding table.
+    return var;
+  }
+
   Var EmitMatchShape(MatchShape binding) final {
     BlockFrame* cur_frame = CurrentBlockFrame();
     // NOTE match shape do not follow simple binding rule
@@ -999,6 +1013,11 @@ TVM_REGISTER_GLOBAL("relax.BlockBuilderEmit").set_body_typed([](BlockBuilder bui
 TVM_REGISTER_GLOBAL("relax.BlockBuilderEmitVarBinding")
     .set_body_typed([](BlockBuilder builder, VarBinding binding) {
       return builder->Emit(binding);
+    });
+
+TVM_REGISTER_GLOBAL("relax.BlockBuilderEmitMatchCast")
+    .set_body_typed([](BlockBuilder builder, Expr value, StructInfo struct_info) {
+      return builder->EmitMatchCast(value, struct_info);
     });
 
 TVM_REGISTER_GLOBAL("relax.BlockBuilderEmitMatchShape")

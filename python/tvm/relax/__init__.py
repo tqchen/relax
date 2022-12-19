@@ -37,6 +37,7 @@ Var = expr.Var
 DataflowVar = expr.DataflowVar
 Binding = expr.Binding
 MatchShape = expr.MatchShape
+MatchCast = expr.MatchCast
 VarBinding = expr.VarBinding
 BindingBlock = expr.BindingBlock
 DataflowBlock = expr.DataflowBlock

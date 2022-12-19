@@ -217,6 +217,7 @@ class ExprVisitor : public ExprFunctor<void(const Expr&)> {
   // specific leaf level visitor functions
   virtual void VisitBinding_(const VarBindingNode* binding);
   virtual void VisitBinding_(const MatchShapeNode* binding);
+  virtual void VisitBinding_(const MatchCastNode* binding);
   // second level dispatching based on binding value type.
   // these dispatching functions get called from first-level dispatch on VarBinding
   virtual void VisitBinding_(const VarBindingNode* binding, const ConstantNode* val);
@@ -343,6 +344,7 @@ class ExprMutator : public ExprMutatorBase {
   // specific leaf level visitor functions
   virtual void VisitBinding_(const VarBindingNode* binding);
   virtual void VisitBinding_(const MatchShapeNode* binding);
+  virtual void VisitBinding_(const MatchCastNode* binding);
   // second level dispatching based on binding value type.
   // these dispatching functions get called from first-level dispatch on VarBinding
   virtual void VisitBinding_(const VarBindingNode* binding, const ConstantNode* val);
