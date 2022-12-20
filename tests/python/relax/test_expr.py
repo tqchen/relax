@@ -136,14 +136,12 @@ def test_func():
     blocks = [rx.BindingBlock(bindings)]
 
     seqe = rx.SeqExpr(blocks, x)
-    ret_type = rx.DynTensorType(-1, "float32")
-    ret_shape = rx.RuntimeDepShape()
-    func = rx.Function([x], seqe, ret_type, ret_shape)
+    ret_struct_info = R.Tensor("float32", ndim=-1)
+    func = rx.Function([x], seqe, ret_struct_info)
     func = func.with_attr("global_symbol", "func")
     assert func.params[0] == x
     assert func.body == seqe
-    assert func.ret_type == ret_type
-    assert isinstance(func.ret_shape, rx.RuntimeDepShape)
+    assert func.ret_struct_info == ret_struct_info
     assert func.attrs["global_symbol"] == "func"
 
 

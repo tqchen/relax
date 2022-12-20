@@ -73,9 +73,7 @@ def test_var() -> None:
     v0_str = dump_ast(v0)
     assert v0_str == 'Var(name_hint="v0")'
 
-    shape_anno = [54, 96]
-    type_anno = rx.DynTensorType(2, "float32")
-    v1 = rx.Var("v1", shape_anno, type_anno)
+    v1 = rx.Var("v1", R.Tensor([54, 96], "float32"))
     v1_no_annos = dump_ast(v1, include_shape_annotations=False, include_type_annotations=False)
     assert v1_no_annos == 'Var(name_hint="v1")'
     v1_annos = dump_ast(v1)
@@ -90,9 +88,7 @@ def test_dataflow_var() -> None:
     v0_str = dump_ast(v0)
     assert v0_str == 'DataflowVar(name_hint="v0")'
 
-    shape_anno = [54, 96]
-    type_anno = rx.DynTensorType(2, "float16")
-    v1 = rx.DataflowVar("v1", shape_anno, type_anno)
+    v1 = rx.DataflowVar("v1", R.Tensor([54, 96], "float16"))
     v1_no_annos = dump_ast(v1, include_shape_annotations=False, include_type_annotations=False)
     assert v1_no_annos == 'DataflowVar(name_hint="v1")'
     v1_annos = dump_ast(v1)
@@ -107,7 +103,7 @@ def test_match_shape() -> None:
     m = tir.Var("m", dtype="int64")
     n = tir.Var("n", dtype="int64")
     shape = rx.const([16, 8], "int32")
-    var = rx.Var("v0", type_annotation=rx.ShapeType())
+    var = rx.Var("v0", R.Shape())
     b0 = rx.MatchShape(shape, [m, n], var)
     b0_str = dump_ast(b0)
     assert b0_str.startswith("MatchShape(")
@@ -119,13 +115,9 @@ def test_match_shape() -> None:
     assert b0_str != dump_ast(b0, include_type_annotations=False)
 
     # var1: Tensor((m, n), "float32") =
-    #   match_shape(var0: Tensor(_, "float32"), [m, n])
-    type_anno0 = rx.DynTensorType(-1, "float32")
-    value = rx.Var("value", type_annotation=type_anno0)
-
-    shape_anno = [m, n]
-    type_anno = rx.DynTensorType(2, "float32")
-    var = rx.Var("v1", shape_anno, type_anno)
+    #   match_shape(var0: R.Tensor("float32"), [m, n])
+    value = rx.Var("value", R.Tensor("float32"))
+    var = rx.Var("v1", R.Tensor([m, n], "float32"))
     b1 = rx.MatchShape(value, [m, n], var)
     b1_str = dump_ast(b1)
     assert b1_str.startswith("MatchShape(")
@@ -229,17 +221,14 @@ def test_func():
     bindings = [rx.VarBinding(x, rx.const(1))]
     blocks = [rx.BindingBlock(bindings)]
     seqe = rx.SeqExpr(blocks, x)
-    ret_type = rx.DynTensorType(-1, "float32")
-    ret_shape = rx.RuntimeDepShape()
-    func = rx.Function([x], seqe, ret_type, ret_shape)
+    func = rx.Function([x], seqe, R.Tensor("float32"))
     func = func.with_attr("global_symbol", "func")
 
     func_str = dump_ast(func)
     assert func_str.startswith("Function(")
     assert "params=" in func_str
     assert "body=" in func_str
-    assert "ret_type=" in func_str
-    assert "ret_shape=" in func_str
+    assert "ret_struct_info=" in func_str
     assert "attrs=" in func_str
     assert '"global_symbol": "func"' in func_str
     assert "SeqExpr(" in func_str
@@ -330,7 +319,7 @@ def test_call_packed():
     )
 
     # the function has an annotated return type
-    assert "ret_type=ObjectType()" in f_str
+    assert "ret_struct_info=ObjectStructInfo()" in f_str
 
     assert isinstance(f.body, rx.SeqExpr)
     extern_call = f.body.blocks[0].bindings[-1].value

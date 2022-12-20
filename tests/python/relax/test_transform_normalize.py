@@ -29,7 +29,6 @@ from tvm.script import tir as T, relax as R
 def test_normalize_function():
     m = tir.Var("m", "int64")
     n = tir.Var("n", "int64")
-    type_anno = relax.DynTensorType(ndim=2, dtype="float16")
     x = relax.Var("x", R.Tensor([m, n], "float16"))
 
     # Note: the parser automatically normalize the IR written in TVMScript,
@@ -37,8 +36,7 @@ def test_normalize_function():
     mul_add = relax.Function(
         [x],
         relax.op.multiply(relax.op.add(x, x), relax.op.add(x, x)),
-        ret_type=type_anno,
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor("float16", ndim=2),
     )
 
     # Note: from_expr api names private function (function without global_symbol) as "main"
@@ -82,8 +80,7 @@ def test_normalize_if():
             ],
             y,
         ),
-        ret_type=relax.DynTensorType(1, "float32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor("float32", ndim=1),
     )
 
     before_mod = tvm.IRModule.from_expr(f)
@@ -146,8 +143,7 @@ def test_normalize_seq_body():
     f = relax.Function(
         [x, y],
         seq,
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
 
     before_mod = tvm.IRModule.from_expr(f)
@@ -171,8 +167,7 @@ def test_normalize_func_body():
     f = relax.Function(
         [x, y],
         relax.op.add(x, y),
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
 
     before_mod = tvm.IRModule.from_expr(f)
@@ -204,8 +199,7 @@ def test_normalize_if_branches():
     f = relax.Function(
         [cond, x, y],
         seq,
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
 
     before_mod = tvm.IRModule.from_expr(f)
@@ -255,8 +249,7 @@ def test_normalize_if_condition():
             ],
             y,
         ),
-        ret_type=relax.DynTensorType(1, "float32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor("float32", ndim=1),
     )
 
     before_mod = tvm.IRModule.from_expr(f)
@@ -289,8 +282,7 @@ def test_normalize_tuple_get_item():
             ),
             0,
         ),
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
 
     before_mod = tvm.IRModule.from_expr(f)
@@ -316,8 +308,7 @@ def test_normalize_tuple_get_item():
             ],
             ret_var,
         ),
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
     expected_mod = tvm.IRModule.from_expr(expected_f)
     # apply normalization to fill in type and shape annotations (tedious otherwise)
@@ -343,8 +334,7 @@ def test_normalize_combine_nearby_blocks():
             ],
             v3,
         ),
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
 
     after_mod = relax.transform.Normalize()(tvm.IRModule.from_expr(f))
@@ -387,8 +377,7 @@ def test_normalize_nested_seq():
     f = relax.Function(
         [],
         seq,
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
     after_mod = relax.transform.Normalize()(tvm.IRModule.from_expr(f))
 
@@ -439,8 +428,7 @@ def test_normalize_nested_seq_dataflow():
     f = relax.Function(
         [],
         seq,
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
     after_mod = relax.transform.Normalize()(tvm.IRModule.from_expr(f))
 
@@ -508,8 +496,7 @@ def test_normalize_deeply_nested_seq():
     f = relax.Function(
         [],
         seq,
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
     after_mod = relax.transform.Normalize()(tvm.IRModule.from_expr(f))
 
@@ -552,8 +539,7 @@ def test_nesting_non_dataflow_in_dataflow_error():
     f = relax.Function(
         [],
         seq,
-        ret_type=relax.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=relax.RuntimeDepShape(),
+        ret_struct_info=R.Tensor([], "int32"),
     )
     relax.transform.Normalize()(tvm.IRModule.from_expr(f))
     # should fail due to a normal binding block being inside a dataflowblock

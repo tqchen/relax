@@ -29,9 +29,7 @@ cond = rx.Var("cond", R.Tensor([], "bool"))
 def build_function(blocks, params=[]):
     """Returns relax.function with given blocks"""
     seq_expr = rx.SeqExpr(blocks, blocks[-1].bindings[-1].var)
-    ret_type = rx.DynTensorType(ndim=-1, dtype="float32")
-    ret_shape = rx.RuntimeDepShape()
-    func = rx.Function([x, cond] + params, seq_expr, ret_type, ret_shape).with_attr(
+    func = rx.Function([x, cond] + params, seq_expr, R.Tensor("float32")).with_attr(
         "global_symbol", "foo"
     )
     return func
@@ -277,8 +275,7 @@ def test_tuple_get_item_nested():
     f = rx.Function(
         [nested_tup],
         rx.SeqExpr([rx.BindingBlock([rx.VarBinding(ret_var, double_idx)])], ret_var),
-        ret_type=rx.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=rx.RuntimeDepShape(),
+        ret_struct_info=R.Tensor(ndim=0, dtype="int32"),
     )
     f = f.with_attr("global_symbol", "f")
     mod = tvm.IRModule.from_expr(f)
@@ -298,8 +295,7 @@ def test_tuple_get_item_nested():
             ],
             ret_var,
         ),
-        ret_type=rx.DynTensorType(ndim=0, dtype="int32"),
-        ret_shape=rx.RuntimeDepShape(),
+        ret_struct_info=R.Tensor(ndim=0, dtype="int32"),
     )
     new_f = new_f.with_attr("global_symbol", "new_f")
     mod = tvm.IRModule.from_expr(new_f)
@@ -312,13 +308,10 @@ def test_complex_seq_body():
     # Error: seq expr with a body that is not a leaf expression is not permitted
     x = rx.Var("x", R.Tensor([], "int32"))
     y = rx.Var("y", R.Tensor([], "int32"))
-    ret_type = rx.DynTensorType(ndim=0, dtype="int32")
-    ret_shape = rx.RuntimeDepShape()
     func = rx.Function(
         [x, y],
         rx.SeqExpr([], rx.op.add(x, y)),
-        ret_type,
-        ret_shape,
+        R.Tensor(ndim=0, dtype="int32"),
     ).with_attr("global_symbol", "foo")
     mod = tvm.IRModule.from_expr(func)
     assert not rx.analysis.well_formed(mod)
@@ -340,8 +333,7 @@ def test_complex_seq_body():
             ],
             z,
         ),
-        ret_type,
-        ret_shape,
+        R.Tensor(ndim=0, dtype="int32"),
     ).with_attr("global_symbol", "foo")
     new_mod = tvm.IRModule.from_expr(new_func)
     # normalize in order to fill in checked type

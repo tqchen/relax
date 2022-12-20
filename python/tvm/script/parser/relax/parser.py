@@ -142,11 +142,9 @@ def visit_function_def(self: Parser, node: doc.FunctionDef) -> None:
 @dispatch.register(token="relax", type_name="tvm_declare_function")
 def visit_tvm_declare_function(self: Parser, node: doc.FunctionDef) -> None:
     if node.returns is None:
-        ret_sinfo, ret_type, ret_shape = relax.ObjectStructInfo(), None, None
+        ret_sinfo = relax.TupleStructInfo([])
     else:
         ret_sinfo = eval_type_annotation(self, node.returns)
-        ret_type = relax.analysis.get_static_type(ret_sinfo)
-        ret_shape = relax.analysis.get_legacy_shape_hint(ret_sinfo)
     params = []
     params_sinfo = []
     for arg in node.args.args:
@@ -156,7 +154,7 @@ def visit_tvm_declare_function(self: Parser, node: doc.FunctionDef) -> None:
         params_sinfo.append(param_sinfo)
         params.append(relax.Var(arg.arg, param_sinfo))
 
-    func_signature = relax.Function.create_unchecked(params, None, ret_type, ret_shape)
+    func_signature = relax.Function.create_empty(params, ret_sinfo)
     global_var = I.decl_function(node.name, func_signature)
     self.var_table.add(node.name, global_var)
 

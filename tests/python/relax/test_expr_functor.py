@@ -574,9 +574,7 @@ def test_function():
     bindings = [relax.VarBinding(x, relax.const(1))]
     blocks = [relax.BindingBlock(bindings)]
     seq_expr = relax.SeqExpr(blocks, x)
-    ret_type = relax.DynTensorType(1, "float32")
-    ret_shape = relax.ShapeExpr([n])
-    func = relax.Function([x], seq_expr, ret_type, ret_shape)
+    func = relax.Function([x], seq_expr, R.Tensor([n], "float32"))
     basic_check(
         func,
         "\n".join(
@@ -595,7 +593,6 @@ def test_function():
             [
                 "ShapeExpr",
                 "VarDef",
-                "ShapeExpr",
                 "Constant",
                 "ShapeExpr",
                 "VarDef",

@@ -481,7 +481,7 @@ def test_annotation():
 
     # Cannot use block builder here because we need to check the annotated type,
     # which may be inconsistent with deduced type.
-    assert isinstance(foo.ret_type, relax.ObjectType)
+    assert isinstance(foo.ret_struct_info, relax.ObjectStructInfo)
     m = foo.params[0].shape[1]
     bindings = foo.body.blocks[0].bindings
     _check_type_shape(
@@ -509,7 +509,7 @@ def test_annotate_override():
         z: R.Object = y
         return z
 
-    assert isinstance(foo.ret_type, relax.ObjectType)
+    assert isinstance(foo.ret_struct_info, relax.ObjectStructInfo)
     y_bind, z_bind = foo.body.blocks[0].bindings
     assert isinstance(y_bind.var.checked_type, relax.DynTensorType)
     assert isinstance(z_bind.var.checked_type, relax.ObjectType)
@@ -752,7 +752,7 @@ def test_erase_to_well_defined():
         w = z
         return w
 
-    assert isinstance(foo.ret_shape, RuntimeDepShape)
+    tvm.ir.assert_structural_equal(foo.ret_struct_info, R.Tensor(ndim=2))
     _check(foo, None)
 
 

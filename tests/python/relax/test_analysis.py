@@ -250,7 +250,7 @@ def test_shape_var_nested():
     x = rx.Var("x", R.Tensor(ndim=-1, dtype="int64"))
     y = rx.Var("y", R.Tensor(ndim=-1, dtype="int64"))
 
-    func = rx.Function([x, y], shape_expr, rx.ShapeType(), rx.RuntimeDepShape())
+    func = rx.Function([x, y], shape_expr, R.Shape())
     vars = shape_vars(func)
 
     assert len(vars) == 1
@@ -357,14 +357,12 @@ def test_free_vars():
     inner = rx.Function(
         [z],
         rx.op.add(x, rx.op.add(y, z)),
-        ret_type=rx.DynTensorType(ndim=-1),
-        ret_shape=rx.RuntimeDepShape(),
+        ret_struct_info=R.Tensor(ndim=-1),
     )
     outer = rx.Function(
         [x, y],
         rx.Call(inner, [y]),
-        ret_type=rx.DynTensorType(ndim=-1),
-        ret_shape=rx.RuntimeDepShape(),
+        ret_struct_info=R.Tensor(ndim=-1),
     )
     assert len(free_vars(outer)) == 0
     assert var_name_set(free_vars(inner)) == {"x", "y"}

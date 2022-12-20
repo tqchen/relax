@@ -129,14 +129,10 @@ class LambdaLifter : public ExprMutator {
 
     if (all_params_unchanged && body.same_as(func_node->body)) {
       visited_func = GetRef<Expr>(func_node);
-    } else if (body->checked_type_.as<ObjectTypeNode>()) {
-      // make_closure was introduced
-      // TODO(@sslyu): Determine if we can fill in the return shape
-      visited_func =
-          Function(params, body, body->checked_type_, RuntimeDepShape(), func_node->attrs);
+    } else if (const auto& body_sinfo = MatchStructInfo<ObjectStructInfo>(body)) {
+      visited_func = Function(params, body, body_sinfo.value(), func_node->attrs);
     } else {
-      visited_func =
-          Function(params, body, func_node->ret_type, func_node->ret_shape, func_node->attrs);
+      visited_func = Function(params, body, func_node->ret_struct_info, func_node->attrs);
     }
     auto new_func = Downcast<Function>(visited_func);
 
@@ -146,8 +142,7 @@ class LambdaLifter : public ExprMutator {
       lifted_func = Function(
           /*params=*/new_func->params,
           /*body=*/new_func->body,
-          /*ret_type=*/new_func->ret_type,
-          /*ret_shape=*/new_func->ret_shape,
+          /*ret_struct_info=*/new_func->ret_struct_info,
           /*attrs=*/new_func->attrs,
           /*span=*/new_func->span);
     } else {
@@ -163,8 +158,7 @@ class LambdaLifter : public ExprMutator {
 
       lifted_func = Function(/*params=*/closure_params,
                              /*body=*/Bind(new_func->body, rebinding_map),
-                             /*ret_type=*/new_func->ret_type,
-                             /*ret_shape=*/new_func->ret_shape,
+                             /*ret_struct_info=*/new_func->ret_struct_info,
                              /*attrs=*/new_func->attrs,
                              /*span=*/func->span);
 
@@ -240,8 +234,7 @@ class LambdaLifter : public ExprMutator {
     for (auto pair : glob_funcs) {
       if (auto* n = pair.second.as<FunctionNode>()) {
         auto func = GetRef<Function>(n);
-        func = Function(func->params, VisitExpr(func->body), func->ret_type, func->ret_shape,
-                        func->attrs);
+        func = Function(func->params, VisitExpr(func->body), func->ret_struct_info, func->attrs);
         builder_->UpdateFunction(pair.first, func);
       }
     }

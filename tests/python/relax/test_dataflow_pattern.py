@@ -129,14 +129,11 @@ def test_function_pattern():
     assert isinstance(f.body, CallPattern)
     assert isinstance(f.body.args[0], WildcardPattern)
     assert isinstance(f.body.args[1], WildcardPattern)
-    ttype = rx.DynTensorType(-1, "float32")
     x = rx.Var("x", R.Tensor("float32"))
     y = rx.Var("y", R.Tensor("float32"))
-    assert f.match(
-        rx.Function([x, y], rx.op.add(x, y), ret_type=ttype, ret_shape=rx.RuntimeDepShape())
-    )
+    assert f.match(rx.Function([x, y], rx.op.add(x, y), ret_struct_info=R.Tensor("float32")))
     assert not f.match(
-        rx.Function([x, y], rx.op.multiply(x, y), ret_type=ttype, ret_shape=rx.RuntimeDepShape())
+        rx.Function([x, y], rx.op.multiply(x, y), ret_struct_info=R.Tensor("float32"))
     )
 
 
@@ -253,7 +250,7 @@ def test_prim_arr_pattern():
 
 def test_rt_dep_shape_pattern():
     # runtime-dep-shape var
-    rts_var = rx.Var("rts_var",R.Tensor("float32", ndim=4))
+    rts_var = rx.Var("rts_var", R.Tensor("float32", ndim=4))
     # static-shape var
     ss_var = rx.Var("ss_var", R.Tensor([32, 32], "float32"))
     assert wildcard().has_rt_dep_shape().match(rts_var)
@@ -278,10 +275,9 @@ def test_op_attr():
 
 
 def test_match_call_attr():
-    ttype = rx.DynTensorType(-1, "float32")
     x = rx.Var("x", R.Tensor("float32"))
     y = rx.Var("y", R.Tensor("float32"))
-    fn = rx.Function([x, y], rx.op.add(x, y), ret_type=ttype, ret_shape=rx.RuntimeDepShape())
+    fn = rx.Function([x, y], rx.op.add(x, y), ret_struct_info=R.Tensor("float32"))
     annotated_fn = fn.with_attr({"Codegen": "test-codegen", "global_symbol": "test-symbol"})
     xp = is_var("x")
     yp = is_var("y")

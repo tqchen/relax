@@ -160,10 +160,8 @@ class ASTPrinter(ExprFunctor):
         fields = {
             "params": self.build_list(map(self.visit_expr, op.params)),
             "body": self.visit_expr(op.body),
-            "ret_shape": self.visit_expr(op.ret_shape),
+            "ret_struct_info": self.visit_struct_info_(op.ret_struct_info),
         }
-        if op.ret_type:
-            fields["ret_type"] = self.visit_type_(op.ret_type)
         if op.attrs:
             fields["attrs"] = self.build_list(
                 map(
@@ -265,6 +263,45 @@ class ASTPrinter(ExprFunctor):
                 # TODO: skipping type params and type constraints
             )
         raise ValueError(f"Invalid Relax Type {type_node} ({type(type_node)})")
+
+    def visit_struct_info_(self, struct_info_node: relax.StructInfo) -> str:
+        """
+        Recurse down struct info and print their ASTs too
+        """
+        if isinstance(struct_info_node, relax.ShapeStructInfo):
+            fields = {}
+            fields["ndim"] = struct_info_node.ndim
+            if struct_info_node.values is not None:
+                fields["dtype"] = struct_info_node.values
+            return self.build_ast_node("ShapeStructInfo", **fields)
+        elif isinstance(struct_info_node, relax.ObjectStructInfo):
+            return self.build_ast_node("ObjectStructInfo")
+        elif isinstance(struct_info_node, relax.PrimStructInfo):
+            return self.build_ast_node("PrimStructInfo", dtype=struct_info_node.dtype)
+        elif isinstance(struct_info_node, relax.TensorStructInfo):
+            fields = {}
+            fields["dtype"] = struct_info_node.dtype
+            if struct_info_node.shape:
+                fields["shape"] = self.visit_expr(struct_info_node.shape)
+            else:
+                fields["ndim"] = struct_info_node.ndim
+            return self.build_ast_node("TensorStructInfo", **fields)
+        elif isinstance(struct_info_node, relax.TupleStructInfo):
+            return self.build_ast_node(
+                "TupleType",
+                fields=self.build_list(map(self.visit_struct_info_, struct_info_node.fields)),
+            )
+        elif isinstance(struct_info_node, relax.FuncStructInfo):
+            fields = {}
+            if struct_info_node.params:
+                fields["params"] = self.build_list(
+                    map(self.visit_struct_info_, struct_info_node.params)
+                )
+            fields["ret"] = self.visit_struct_info_(struct_info_node.ret)
+        else:
+            raise ValueError(
+                f"Invalid Relax StructInfo {struct_info_node} ({type(struct_info_node)})"
+            )
 
     def visit_shape_(self, expr: relax.Expr) -> str:
         # used only for rendering the shape_ annotation, if it's intended to be included

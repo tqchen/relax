@@ -111,13 +111,11 @@ void FuncAttrs(Map<String, ObjectRef> attrs) {
 
 void FuncRetStructInfo(const tvm::relax::StructInfo& ret_sinfo) {
   FunctionFrame frame = FindFunctionFrame("R.func_ret_struct_info");
-  if (frame->ret_sinfo.defined()) {
+  if (frame->ret_struct_info.defined()) {
     LOG(FATAL) << "ValueError: Duplicate function return struct info, previous one is:\n "
-               << frame->ret_sinfo.value();
+               << frame->ret_struct_info.value();
   }
-  frame->ret_sinfo = ret_sinfo;
-  frame->ret_type = GetStaticType(ret_sinfo);
-  frame->ret_shape = GetLegacyShapeHint(ret_sinfo);
+  frame->ret_struct_info = ret_sinfo;
 }
 
 void FuncRetValue(const tvm::relax::Expr& value) {
