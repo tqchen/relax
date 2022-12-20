@@ -261,7 +261,9 @@ class ASTPrinter(ExprFunctor):
             fields = {}
             fields["ndim"] = struct_info_node.ndim
             if struct_info_node.values is not None:
-                fields["values"] = self.build_list(map(self.visit_prim_expr_, struct_info_node.values))
+                fields["values"] = self.build_list(
+                    map(self.visit_prim_expr_, struct_info_node.values)
+                )
             return self.build_ast_node("ShapeStructInfo", **fields)
         elif isinstance(struct_info_node, relax.ObjectStructInfo):
             return self.build_ast_node("ObjectStructInfo")

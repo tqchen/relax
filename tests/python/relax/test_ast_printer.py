@@ -78,7 +78,9 @@ def test_var() -> None:
     assert v0_str == 'Var(name_hint="v0")'
 
     v1 = rx.Var("v1", R.Tensor([54, 96], "float32"))
-    v1_no_annos = dump_ast(v1, include_struct_info_annotations=False, include_type_annotations=False)
+    v1_no_annos = dump_ast(
+        v1, include_struct_info_annotations=False, include_type_annotations=False
+    )
     assert v1_no_annos == 'Var(name_hint="v1")'
     v1_annos = dump_ast(v1)
     assert v1_annos != v1_no_annos
@@ -93,7 +95,9 @@ def test_dataflow_var() -> None:
     assert v0_str == 'DataflowVar(name_hint="v0")'
 
     v1 = rx.DataflowVar("v1", R.Tensor([54, 96], "float16"))
-    v1_no_annos = dump_ast(v1, include_struct_info_annotations=False, include_type_annotations=False)
+    v1_no_annos = dump_ast(
+        v1, include_struct_info_annotations=False, include_type_annotations=False
+    )
     assert v1_no_annos == 'DataflowVar(name_hint="v1")'
     v1_annos = dump_ast(v1)
     assert v1_annos != v1_no_annos
@@ -127,7 +131,9 @@ def test_match_shape() -> None:
     assert b1_str.startswith("MatchShape(")
     assert "PrimExpr(value=`m: int64`)" in b1_str
     assert "PrimExpr(value=`n: int64`)" in b1_str
-    assert b1_str != dump_ast(b1, include_type_annotations=False, include_struct_info_annotations=False)
+    assert b1_str != dump_ast(
+        b1, include_type_annotations=False, include_struct_info_annotations=False
+    )
 
 
 def test_match_shape_unbound() -> None:
@@ -242,16 +248,16 @@ def test_func():
 
 
 def test_shape_of():
-    v0 = rx.Var("v0")
-    s0 = v0.shape
+    v0 = rx.Var("v0", R.Tensor(ndim=2))
+    s0 = rx.shape_of(v0)
     s0_str = dump_ast(s0)
     assert s0_str.startswith("Call(")
     assert 'op=Op(name="relax.shape_of")' in s0_str
     assert "args=" in s0_str
-    assert 'Var(name_hint="v0")' in s0_str
+    assert 'name_hint="v0"' in s0_str
 
     v1 = rx.Var("v1", R.Tensor([96, 54]))
-    s1 = v1.shape
+    s1 = rx.shape_of(v1)
     s1_str = dump_ast(s1)
     assert s1_str.startswith("ShapeExpr("), s1_str
     assert "values=" in s1_str
