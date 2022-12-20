@@ -199,22 +199,18 @@ class Var(Expr):
     """The variable class for all Relax bindings."""
 
     vid: Id
-    type_annotation: Optional[Type]
+    struct_info: Optional["tvm.relax.StructInfo"]
 
     def __init__(
         self,
         name_hint: str,
-        shape_annotation: Optional[Union[List[Any], typing.Tuple[Any, ...]]] = None,
-        type_annotation: Optional[Type] = None,
+        struct_info: Optional["tvm.relax.StructInfo"] = None,
         span: Span = None,
     ) -> None:
-        if isinstance(shape_annotation, (list, tuple)):
-            shape_annotation = make_shape(shape_annotation)
         self.__init_handle_by_constructor__(
             _ffi_api.Var if isinstance(name_hint, str) else _ffi_api.VarFromId,  # type: ignore
             name_hint,
-            shape_annotation,
-            type_annotation,
+            struct_info,
             span,
         )
 
@@ -249,23 +245,21 @@ class DataflowVar(Var):
     """A sub-type of the variable node used to mark dataflow variables from
     normal visible "function local" bindings."""
 
+    vid: Id
+    struct_info: Optional["tvm.relax.StructInfo"]
+
     def __init__(
         self,
         name_hint: Union[str, Id],
-        shape_annotation: Optional[Union[List[Any], typing.Tuple[Any, ...]]] = None,
-        type_annotation: Optional[Type] = None,
+        struct_info: Optional["tvm.relax.StructInfo"] = None,
         span: Span = None,
     ) -> None:
-        if isinstance(shape_annotation, (list, tuple)):
-            shape_annotation = make_shape(shape_annotation)
-
         self.__init_handle_by_constructor__(
             _ffi_api.DataflowVar  # type: ignore
             if isinstance(name_hint, str)
             else _ffi_api.DataflowVarFromId,  # type: ignore
             name_hint,
-            shape_annotation,
-            type_annotation,
+            struct_info,
             span,
         )
 
@@ -338,36 +332,30 @@ class Function(BaseFunc):
 
     params: List[Var]
     body: Expr
-    ret_type: Type
-    ret_shape: Expr
+    ret_struct_info: "tvm.relax.StructInfo"
     attrs: Optional[tvm.ir.DictAttrs]
 
     def __init__(
         self,
         params: List[Var],
         body: Expr,
-        ret_type: Type,
-        ret_shape: Expr,
+        ret_struct_info: Optional["tvm.relax.StructInfo"],
         attrs: Optional[tvm.ir.DictAttrs] = None,
         span: Optional[Span] = None,
     ) -> None:
         self.__init_handle_by_constructor__(
-            _ffi_api.Function, params, body, ret_type, ret_shape, attrs, span  # type: ignore
+            _ffi_api.Function, params, body, ret_struct_info, attrs, span  # type: ignore
         )
 
     @staticmethod
-    def create_unchecked(
+    def create_empty(
         params: List[Var],
-        body: Expr,
-        ret_type: Type,
-        ret_shape: Expr,
+        ret_struct_info: "tvm.relax.StructInfo",
         attrs: Optional[tvm.ir.DictAttrs] = None,
         span: Optional[Span] = None,
     ):
-        """Construct a relax.Function but without type checking."""
-        return _ffi_api.Function_CreateUnchecked(  # type: ignore
-            params, body, ret_type, ret_shape, attrs, span
-        )
+        """Construct a relax.Function but without body"""
+        return _ffi_api.Function_CreateEmpty(params, ret_struct_info, attrs, span)  # type: ignore
 
     def __call__(self, *args):
         """Invoke the global function.
