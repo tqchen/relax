@@ -24,7 +24,7 @@
 #include <tvm/relax/attrs/shape.h>
 #include <tvm/relax/backend.h>
 #include <tvm/relax/expr_functor.h>
-#include <tvm/relax/type.h>
+#include <tvm/relax/struct_info.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
@@ -45,8 +45,7 @@ class VMShapeLowerMutator : public ExprMutator {
         // prepare mapping and heap var
         expr2slot_ = PrepareExpr2Slot(Downcast<Function>(func));
         heap_size_ = IntImm(ShapeDType(), expr2slot_.size());
-        DynTensorType heap_type(1, ShapeDType());
-        shape_heap_ = Var("shape_heap", ShapeExpr({heap_size_}), heap_type);
+        shape_heap_ = Var("shape_heap", TensorStructInfo(ShapeExpr({heap_size_}), ShapeDType()));
 
         // mutate
         Function updated_func = Downcast<Function>(VisitExpr(func));

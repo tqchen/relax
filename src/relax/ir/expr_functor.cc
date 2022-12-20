@@ -701,9 +701,8 @@ Var ExprMutator::WithStructInfo(Var var, StructInfo struct_info) {
         StructuralEqual()(var->struct_info_, struct_info)) {
       return var;
     } else {
-      Var new_var = var.as<DataflowVarNode>() ? DataflowVar(var->vid, NullOpt, NullOpt, var->span)
-                                              : Var(var->vid, NullOpt, NullOpt, var->span);
-      UpdateStructInfo(new_var, struct_info);
+      Var new_var = var.as<DataflowVarNode>() ? DataflowVar(var->vid, struct_info, var->span)
+                                              : Var(var->vid, struct_info, var->span);
       return new_var;
     }
   } else {

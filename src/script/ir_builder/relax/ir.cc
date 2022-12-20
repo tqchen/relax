@@ -87,9 +87,7 @@ FunctionFrame Function() {
 
 tvm::relax::Var Arg(const String& name, const tvm::relax::StructInfo& struct_info) {
   FunctionFrame frame = FindFunctionFrame("R.Arg");
-  // TODO(relax-team): Update constructor to include struct info as argument.
-  tvm::relax::Var var(name, NullOpt, NullOpt);
-  UpdateStructInfo(var, struct_info);
+  tvm::relax::Var var(name, struct_info);
   frame->params.push_back(var);
   return var;
 }

@@ -96,8 +96,7 @@ class LambdaLifter : public ExprMutator {
     Array<Var> typed_captured_vars;
     Map<Var, Expr> rebinding_map;
     for (auto free_var : captured_vars) {
-      Var var = Var(free_var->name_hint(), NullOpt, NullOpt, free_var->span);
-      UpdateStructInfo(var, GetStructInfo(free_var));
+      Var var = Var(free_var->name_hint(), GetStructInfo(free_var), free_var->span);
       typed_captured_vars.push_back(var);
       rebinding_map.Set(free_var, var);
     }

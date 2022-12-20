@@ -30,7 +30,7 @@ def test_normalize_function():
     m = tir.Var("m", "int64")
     n = tir.Var("n", "int64")
     type_anno = relax.DynTensorType(ndim=2, dtype="float16")
-    x = relax.Var("x", [m, n], type_anno)
+    x = relax.Var("x", R.Tensor([m, n], "float16"))
 
     # Note: the parser automatically normalize the IR written in TVMScript,
     # so we manually construct the function here.
@@ -56,8 +56,8 @@ def test_normalize_function():
 
 
 def test_normalize_if():
-    cond = relax.Var("cond", [], type_annotation=relax.DynTensorType(0, "bool"))
-    x = relax.Var("x", [tir.IntImm("int64", 1)], type_annotation=relax.DynTensorType(1, "float32"))
+    cond = relax.Var("cond", R.Tensor([], "bool"))
+    x = relax.Var("x", R.Tensor([1], "float32"))
     # TODO(relax-team): add type and shape inference for IfNode
     y = relax.Var("y")
 
@@ -140,8 +140,8 @@ def test_normalize_no_op():
 
 def test_normalize_seq_body():
     # a seq expression with a non-leaf body should bind the body to a var as well
-    x = relax.Var("x", [], type_annotation=relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], type_annotation=relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
     seq = relax.SeqExpr([], relax.op.add(x, y))
     f = relax.Function(
         [x, y],
@@ -166,8 +166,8 @@ def test_normalize_seq_body():
 
 def test_normalize_func_body():
     # a function with a body that is not a seq expr should have it wrapped in a seq expr
-    x = relax.Var("x", [], type_annotation=relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], type_annotation=relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
     f = relax.Function(
         [x, y],
         relax.op.add(x, y),
@@ -191,12 +191,12 @@ def test_normalize_func_body():
 
 def test_normalize_if_branches():
     # an if node's branches must be seq exprs
-    x = relax.Var("x", [], type_annotation=relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], type_annotation=relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
     # TODO(@relax-team): z has a shape of () and type of DynTensorType(ndim=0),
     # but normalization fails to infer these even though it should
     z = relax.Var("z")
-    cond = relax.Var("cond", [], type_annotation=relax.DynTensorType(ndim=0, dtype="bool"))
+    cond = relax.Var("cond", R.Tensor([], "bool"))
     plus = relax.op.add(x, y)
     mult = relax.op.multiply(x, y)
     if_node = relax.If(cond, plus, mult)
@@ -230,8 +230,8 @@ def test_normalize_if_branches():
 
 
 def test_normalize_if_condition():
-    cond = relax.Var("cond", [], type_annotation=relax.DynTensorType(0, "bool"))
-    x = relax.Var("x", [tir.IntImm("int64", 1)], type_annotation=relax.DynTensorType(1, "float32"))
+    cond = relax.Var("cond", R.Tensor([], "bool"))
+    x = relax.Var("x", R.Tensor([1], "float32"))
     # TODO(relax-team): add type and shape inference for IfNode
     y = relax.Var("y")
 
@@ -279,7 +279,7 @@ def test_normalize_if_condition():
 
 
 def test_normalize_tuple_get_item():
-    x = relax.Var("x", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
     f = relax.Function(
         [x],
         relax.TupleGetItem(
@@ -299,12 +299,8 @@ def test_normalize_tuple_get_item():
     # TODO: Revisit once we canonicalize SeqExprs (part of normalization?)
     # Not using the parser this time because writing it out correctly results in
     # *one* binding block, whereas the normalized version has *two*
-    idx_var = relax.Var(
-        "idx_var",
-        shape_annotation=relax.Tuple([relax.ShapeExpr([])]),
-        type_annotation=relax.TupleType([relax.DynTensorType(ndim=0, dtype="int32")]),
-    )
-    ret_var = relax.Var("ret", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    idx_var = relax.Var("idx_var", R.Tuple([R.Tensor([], "int32")]))
+    ret_var = relax.Var("ret", R.Tensor([], "int32"))
     expected_f = relax.Function(
         [x],
         relax.SeqExpr(
@@ -331,11 +327,11 @@ def test_normalize_tuple_get_item():
 
 
 def test_normalize_combine_nearby_blocks():
-    x = relax.Var("x", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    v0 = relax.Var("v0", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    v1 = relax.Var("v1", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    v2 = relax.Var("v2", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    v3 = relax.Var("v3", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    v0 = relax.Var("v0", R.Tensor([], "int32"))
+    v1 = relax.Var("v1", R.Tensor([], "int32"))
+    v2 = relax.Var("v2", R.Tensor([], "int32"))
+    v3 = relax.Var("v3", R.Tensor([], "int32"))
     f = relax.Function(
         [x],
         relax.SeqExpr(
@@ -367,9 +363,9 @@ def test_normalize_combine_nearby_blocks():
 
 
 def test_normalize_nested_seq():
-    x = relax.Var("x", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    z = relax.Var("z", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
+    z = relax.Var("z", R.Tensor([], "int32"))
     seq = relax.SeqExpr(
         [
             relax.BindingBlock(
@@ -407,12 +403,12 @@ def test_normalize_nested_seq():
 
 
 def test_normalize_nested_seq_dataflow():
-    x = relax.Var("x", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    z = relax.Var("z", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    q = relax.Var("u", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    w = relax.DataflowVar("w", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    u = relax.Var("u", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
+    z = relax.Var("z", R.Tensor([], "int32"))
+    q = relax.Var("u", R.Tensor([], "int32"))
+    w = relax.DataflowVar("w", R.Tensor([], "int32"))
+    u = relax.Var("u", R.Tensor([], "int32"))
     seq = relax.SeqExpr(
         [
             relax.BindingBlock(
@@ -464,12 +460,12 @@ def test_normalize_nested_seq_dataflow():
 
 
 def test_normalize_deeply_nested_seq():
-    x = relax.Var("x", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    z = relax.Var("z", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    u = relax.Var("u", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    v = relax.Var("v", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    w = relax.Var("w", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.Var("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
+    z = relax.Var("z", R.Tensor([], "int32"))
+    u = relax.Var("u", R.Tensor([], "int32"))
+    v = relax.Var("v", R.Tensor([], "int32"))
+    w = relax.Var("w", R.Tensor([], "int32"))
     seq = relax.SeqExpr(
         [
             relax.BindingBlock(
@@ -533,9 +529,9 @@ def test_normalize_deeply_nested_seq():
 
 @pytest.mark.xfail()
 def test_nesting_non_dataflow_in_dataflow_error():
-    x = relax.DataflowVar("x", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    y = relax.Var("y", [], relax.DynTensorType(ndim=0, dtype="int32"))
-    z = relax.Var("z", [], relax.DynTensorType(ndim=0, dtype="int32"))
+    x = relax.DataflowVar("x", R.Tensor([], "int32"))
+    y = relax.Var("y", R.Tensor([], "int32"))
+    z = relax.Var("z", R.Tensor([], "int32"))
     seq = relax.SeqExpr(
         [
             relax.DataflowBlock(

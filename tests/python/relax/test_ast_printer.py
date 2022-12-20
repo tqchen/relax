@@ -225,8 +225,7 @@ def test_shape_expr() -> None:
 
 
 def test_func():
-    type_anno = rx.DynTensorType(2, "float32")
-    x = rx.Var("foo", type_annotation=type_anno)
+    x = rx.Var("foo", R.Tensor("float32", ndim=2))
     bindings = [rx.VarBinding(x, rx.const(1))]
     blocks = [rx.BindingBlock(bindings)]
     seqe = rx.SeqExpr(blocks, x)
@@ -258,8 +257,7 @@ def test_shape_of():
     assert "args=" in s0_str
     assert 'Var(name_hint="v0")' in s0_str
 
-    shape_anno = [96, 54]
-    v1 = rx.Var("v1", shape_anno, rx.DynTensorType(ndim=2))
+    v1 = rx.Var("v1", R.Tensor([96, 54]))
     s1 = v1.shape
     s1_str = dump_ast(s1)
     assert s1_str.startswith("ShapeExpr("), s1_str

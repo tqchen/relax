@@ -754,7 +754,7 @@ def test_passes_with_mixed_granularities():
     ) -> DataflowBlock:
         # TODO(sunggg): figure out how to create IRModule from DataflowBlock
         # Provide random binding for now
-        x = relax.Var("x", [tvm.tir.Var("n", "int64")], relax.DynTensorType(1, "float32"))
+        x = relax.Var("x", R.Tensor([tvm.tir.Var("n", "int64")], "float32"))
         seq_expr = relax.SeqExpr([block], x)
         ret_type = relax.DynTensorType(-1, "float32")
         ret_shape = relax.RuntimeDepShape()

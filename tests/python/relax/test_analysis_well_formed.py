@@ -18,13 +18,12 @@ import pytest
 import tvm
 from tvm import tir
 from tvm import relax as rx
+from tvm.script import relax as R
 
 m = tir.Var("m", "int64")
 n = tir.Var("n", "int64")
-type_anno = rx.DynTensorType(ndim=2, dtype="float32")
-bool_type_anno = rx.DynTensorType(ndim=0, dtype="bool")
-x = rx.Var("x", [m, n], type_anno)
-cond = rx.Var("cond", [], bool_type_anno)
+x = rx.Var("x", R.Tensor([m, n], "float32"))
+cond = rx.Var("cond", R.Tensor([], "bool"))
 
 
 def build_function(blocks, params=[]):
@@ -40,8 +39,8 @@ def build_function(blocks, params=[]):
 
 def test_var():
     # Error: Var gv0 is not defined
-    gv0 = rx.Var("gv0", [m, n], type_anno)
-    gv1 = rx.Var("gv1", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
+    gv1 = rx.Var("gv1", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, gv0)
     bindings = [rx.VarBinding(gv1, call_node)]
     blocks = [rx.BindingBlock(bindings)]
@@ -50,7 +49,7 @@ def test_var():
     assert not rx.analysis.well_formed(mod)
 
     # Error: Var gv0 is defined more than once
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, x)
     call_node2 = rx.op.multiply(x, x)
     bindings = [rx.VarBinding(gv0, call_node), rx.VarBinding(gv0, call_node2)]
@@ -62,8 +61,8 @@ def test_var():
 
 def test_dataflow_var():
     # Error: DataflowVar lv0 is not defined
-    lv0 = rx.DataflowVar("lv0", [m, n], type_anno)
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    lv0 = rx.DataflowVar("lv0", R.Tensor([m, n], "float32"))
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, lv0)
     bindings = [rx.VarBinding(gv0, call_node)]
     blocks = [rx.DataflowBlock(bindings)]
@@ -72,7 +71,7 @@ def test_dataflow_var():
     assert not rx.analysis.well_formed(mod)
 
     # Error: DataflowVar gv0 is defined more than once
-    lv0 = rx.DataflowVar("lv0", [m, n], type_anno)
+    lv0 = rx.DataflowVar("lv0", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, x)
     call_node2 = rx.op.multiply(x, x)
     bindings = [rx.VarBinding(lv0, call_node), rx.VarBinding(lv0, call_node2)]
@@ -82,7 +81,7 @@ def test_dataflow_var():
     assert not rx.analysis.well_formed(mod)
 
     # Error: DataflowVar lv0 is defined outside DataflowBlock
-    lv0 = rx.DataflowVar("lv0", [m, n], type_anno)
+    lv0 = rx.DataflowVar("lv0", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, x)
     bindings = [rx.VarBinding(lv0, call_node)]
     blocks = [rx.BindingBlock(bindings)]
@@ -91,8 +90,8 @@ def test_dataflow_var():
     assert not rx.analysis.well_formed(mod)
 
     # Error: DataflowVar lv0 is used outside DataflowBlock
-    lv0 = rx.DataflowVar("lv0", [m, n], type_anno)
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    lv0 = rx.DataflowVar("lv0", R.Tensor([m, n], "float32"))
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(lv0, x)
     bindings = [rx.VarBinding(lv0, call_node)]
     blocks = [rx.BindingBlock(bindings)]
@@ -103,7 +102,7 @@ def test_dataflow_var():
 
 def test_global_var():
     # Error: GlobalVar GlobalVar0 is not defined
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     globalvar = rx.GlobalVar("GlobalVar0")
     call_node = rx.Call(
         op=tvm.ir.Op.get("relax.call_tir"),
@@ -119,7 +118,7 @@ def test_global_var():
 def test_symbolic_var():
     # Error: Symbolic Var new_s is not defined
     new_s = tir.Var("new_s", "int64")
-    gv0 = rx.Var("gv0", [m, new_s], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, new_s], "int64"))
     call_node = rx.op.add(x, x)
     bindings = [rx.VarBinding(gv0, call_node)]
     blocks = [rx.BindingBlock(bindings)]
@@ -133,9 +132,8 @@ def test_symbolic_var_invalid_type():
         tvm.TVMError, match="the value in ShapeStructInfo can only have dtype of int64"
     ):
         dim = tir.Var("dim", "float32")
-        type_anno = rx.DynTensorType(ndim=1, dtype="float32")
-        y = rx.Var("y", [dim], type_anno)
-        gv0 = rx.Var("gv0", [dim], type_anno)
+        y = rx.Var("y", R.Tensor([dim], "float32"))
+        gv0 = rx.Var("gv0", R.Tensor([dim], "float32"))
         call_node = rx.op.add(y, y)
         bindings = [rx.VarBinding(gv0, call_node)]
         blocks = [rx.BindingBlock(bindings)]
@@ -146,9 +144,9 @@ def test_symbolic_var_invalid_type():
 
 def test_seq_expr():
     # Error: SeqExpr in VarBinding
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     # build a SeqExpr
-    gv1 = rx.Var("gv1", [m, n], type_anno)
+    gv1 = rx.Var("gv1", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, gv0)
     _bindings = [rx.VarBinding(gv1, call_node)]
     _blocks = [rx.BindingBlock(_bindings)]
@@ -165,9 +163,9 @@ def test_if():
     # Error: Var defined in true/false branch is invisible in the outer scope
     # except the return Var, i.e the var in the last stmt
     # v_in_if is invisible in the outer scope
-    v_in_if = rx.Var("v_in_if", [m, n], type_anno)
+    v_in_if = rx.Var("v_in_if", R.Tensor([m, n], "float32"))
     # gv0 is visible in the outer scope
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     # build true branch
     true_bindings = [
         rx.VarBinding(v_in_if, rx.op.add(x, x)),
@@ -184,7 +182,7 @@ def test_if():
     false_seq_expr = rx.SeqExpr(false_blocks, false_blocks[-1].bindings[-1].var)
     # build If node
     if_node = rx.If(cond=cond, true_branch=true_seq_expr, false_branch=false_seq_expr)
-    gv1 = rx.Var("gv1", [m, n], type_anno)
+    gv1 = rx.Var("gv1", R.Tensor([m, n], "float32"))
     # try to call v_in_if defined in the true/false branch
     bindings = [rx.VarBinding(gv0, if_node), rx.VarBinding(gv1, v_in_if)]
     blocks = [rx.BindingBlock(bindings)]
@@ -200,7 +198,7 @@ def test_if_non_seq_body():
         rx.BindingBlock(
             [
                 rx.VarBinding(
-                    rx.Var("gv1", [m, n], type_anno),
+                    rx.Var("gv1", R.Tensor([m, n], "float32")),
                     if_node,
                 )
             ]
@@ -217,7 +215,7 @@ def test_if_non_seq_body():
         rx.BindingBlock(
             [
                 rx.VarBinding(
-                    rx.Var("gv1", [m, n], type_anno),
+                    rx.Var("gv1", R.Tensor([m, n], "float32")),
                     new_if_node,
                 )
             ]
@@ -239,7 +237,7 @@ def test_if_complex_condition():
         rx.BindingBlock(
             [
                 rx.VarBinding(
-                    rx.Var("gv1", [m, n], type_anno),
+                    rx.Var("gv1", R.Tensor([m, n], "float32")),
                     if_node,
                 )
             ]
@@ -249,14 +247,14 @@ def test_if_complex_condition():
     mod = tvm.IRModule.from_expr(func)
     assert not rx.analysis.well_formed(mod)
 
-    cond_var = rx.Var("q", [], bool_type_anno)
+    cond_var = rx.Var("q", R.Tensor([], "bool"))
     new_if = rx.If(cond_var, rx.SeqExpr([], x), rx.SeqExpr([], x))
     blocks = [
         rx.BindingBlock(
             [
                 rx.VarBinding(cond_var, cond_idx),
                 rx.VarBinding(
-                    rx.Var("gv1", [m, n], type_anno),
+                    rx.Var("gv1", R.Tensor([m, n], "float32")),
                     new_if,
                 ),
             ]
@@ -272,19 +270,10 @@ def test_if_complex_condition():
 def test_tuple_get_item_nested():
     # Error: The tuple value in tuple get item must be a leaf expression
     nested_tup = rx.Var(
-        "t",
-        type_annotation=rx.TupleType(
-            [
-                rx.TupleType(
-                    [
-                        rx.DynTensorType(ndim=0, dtype="int32"),
-                    ]
-                )
-            ]
-        ),
+        "t", rx.TupleStructInfo([rx.TupleStructInfo([rx.TensorStructInfo([], "int32")])])
     )
     double_idx = rx.TupleGetItem(rx.TupleGetItem(nested_tup, 0), 0)
-    ret_var = rx.Var("r", [], rx.DynTensorType(ndim=0, dtype="int32"))
+    ret_var = rx.Var("r", R.Tensor([], "int32"))
     f = rx.Function(
         [nested_tup],
         rx.SeqExpr([rx.BindingBlock([rx.VarBinding(ret_var, double_idx)])], ret_var),
@@ -297,7 +286,7 @@ def test_tuple_get_item_nested():
 
     # okay with an intermediate binding
     first_idx = rx.TupleGetItem(nested_tup, 0)
-    idx_var = rx.Var("v", type_annotation=rx.TupleType([rx.DynTensorType(ndim=0, dtype="int32")]))
+    idx_var = rx.Var("v", rx.TupleStructInfo([rx.TensorStructInfo([], "int32")]))
     second_idx = rx.TupleGetItem(idx_var, 0)
     new_f = rx.Function(
         [nested_tup],
@@ -321,8 +310,8 @@ def test_tuple_get_item_nested():
 
 def test_complex_seq_body():
     # Error: seq expr with a body that is not a leaf expression is not permitted
-    x = rx.Var("x", [], rx.DynTensorType(ndim=0, dtype="int32"))
-    y = rx.Var("y", [], rx.DynTensorType(ndim=0, dtype="int32"))
+    x = rx.Var("x", R.Tensor([], "int32"))
+    y = rx.Var("y", R.Tensor([], "int32"))
     ret_type = rx.DynTensorType(ndim=0, dtype="int32")
     ret_shape = rx.RuntimeDepShape()
     func = rx.Function(
@@ -335,7 +324,7 @@ def test_complex_seq_body():
     assert not rx.analysis.well_formed(mod)
 
     # but if the result is bound, then it's okay
-    z = rx.Var("z", [], rx.DynTensorType(ndim=0, dtype="int32"))
+    z = rx.Var("z", R.Tensor([], "int32"))
     new_func = rx.Function(
         [x, y],
         rx.SeqExpr(
@@ -362,7 +351,7 @@ def test_complex_seq_body():
 
 def test_ANF():
     # Error: Nested Call
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     call_node = rx.op.add(x, rx.op.add(x, x))
     bindings = [rx.VarBinding(gv0, call_node)]
     blocks = [rx.BindingBlock(bindings)]
@@ -371,7 +360,7 @@ def test_ANF():
     assert not rx.analysis.well_formed(mod)
 
     # Error: Call Node in Tuple
-    gv0 = rx.Var("gv0", [m, n], type_anno)
+    gv0 = rx.Var("gv0", R.Tensor([m, n], "float32"))
     bindings = [rx.VarBinding(gv0, rx.Tuple((x, rx.op.add(x, x))))]
     blocks = [rx.BindingBlock(bindings)]
     func = build_function(blocks)

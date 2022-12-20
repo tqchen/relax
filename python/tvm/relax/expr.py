@@ -199,22 +199,18 @@ class Var(Expr):
     """The variable class for all Relax bindings."""
 
     vid: Id
-    type_annotation: Optional[Type]
+    struct_info: Optional["tvm.relax.StructInfo"]
 
     def __init__(
         self,
         name_hint: str,
-        shape_annotation: Optional[Union[List[Any], typing.Tuple[Any, ...]]] = None,
-        type_annotation: Optional[Type] = None,
+        struct_info: Optional["tvm.relax.StructInfo"] = None,
         span: Span = None,
     ) -> None:
-        if isinstance(shape_annotation, (list, tuple)):
-            shape_annotation = make_shape(shape_annotation)
         self.__init_handle_by_constructor__(
             _ffi_api.Var if isinstance(name_hint, str) else _ffi_api.VarFromId,  # type: ignore
             name_hint,
-            shape_annotation,
-            type_annotation,
+            struct_info,
             span,
         )
 
@@ -249,23 +245,21 @@ class DataflowVar(Var):
     """A sub-type of the variable node used to mark dataflow variables from
     normal visible "function local" bindings."""
 
+    vid: Id
+    struct_info: Optional["tvm.relax.StructInfo"]
+
     def __init__(
         self,
         name_hint: Union[str, Id],
-        shape_annotation: Optional[Union[List[Any], typing.Tuple[Any, ...]]] = None,
-        type_annotation: Optional[Type] = None,
+        struct_info: Optional["tvm.relax.StructInfo"] = None,
         span: Span = None,
     ) -> None:
-        if isinstance(shape_annotation, (list, tuple)):
-            shape_annotation = make_shape(shape_annotation)
-
         self.__init_handle_by_constructor__(
             _ffi_api.DataflowVar  # type: ignore
             if isinstance(name_hint, str)
             else _ffi_api.DataflowVarFromId,  # type: ignore
             name_hint,
-            shape_annotation,
-            type_annotation,
+            struct_info,
             span,
         )
 

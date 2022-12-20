@@ -433,7 +433,8 @@ class BlockBuilderImpl : public BlockBuilderNode {
       name_hint = is_dataflow ? "lv" : "gv";
     }
     Id vid = Id(name_table_->GetUniqueName(name_hint));
-    return is_dataflow ? DataflowVar(vid, NullOpt, NullOpt) : Var(vid, NullOpt, NullOpt);
+    return is_dataflow ? DataflowVar(vid, /*struct_info_annotation=*/NullOpt)
+                       : Var(vid, /*struct_info_annotation=*/NullOpt);
   }
 
  private:
