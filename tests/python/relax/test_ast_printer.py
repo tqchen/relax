@@ -14,18 +14,22 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import Dict
-import pytest
 import re
-
-import tvm
-from tvm import tir
-from tvm import relax as rx
-from tvm.relax.testing import dump_ast
-from tvm.relax.testing.ast_printer import ASTPrinter
-from tvm.script import tir as T, relax as R
+from functools import partial
+from typing import Dict
 
 import numpy as np
+import tvm
+import tvm.testing
+from tvm import relax as rx
+from tvm import tir
+from tvm.relax.testing import dump_ast
+from tvm.relax.testing.ast_printer import ASTPrinter
+from tvm.script import relax as R
+from tvm.script import tir as T
+
+# Overload dump_ast to test both struct info and type annotations
+dump_ast = partial(dump_ast, include_struct_info_annotations=True, include_type_annotations=True)
 
 
 def strip_whitespace(text: str) -> str:
@@ -74,12 +78,12 @@ def test_var() -> None:
     assert v0_str == 'Var(name_hint="v0")'
 
     v1 = rx.Var("v1", R.Tensor([54, 96], "float32"))
-    v1_no_annos = dump_ast(v1, include_shape_annotations=False, include_type_annotations=False)
+    v1_no_annos = dump_ast(v1, include_struct_info_annotations=False, include_type_annotations=False)
     assert v1_no_annos == 'Var(name_hint="v1")'
     v1_annos = dump_ast(v1)
     assert v1_annos != v1_no_annos
     assert "PrimExpr" in v1_annos
-    assert "shape_" in v1_annos
+    assert "struct_info" in v1_annos
     assert "checked_type_" in v1_annos
 
 
@@ -89,12 +93,12 @@ def test_dataflow_var() -> None:
     assert v0_str == 'DataflowVar(name_hint="v0")'
 
     v1 = rx.DataflowVar("v1", R.Tensor([54, 96], "float16"))
-    v1_no_annos = dump_ast(v1, include_shape_annotations=False, include_type_annotations=False)
+    v1_no_annos = dump_ast(v1, include_struct_info_annotations=False, include_type_annotations=False)
     assert v1_no_annos == 'DataflowVar(name_hint="v1")'
     v1_annos = dump_ast(v1)
     assert v1_annos != v1_no_annos
     assert "PrimExpr" in v1_annos
-    assert "shape_" in v1_annos
+    assert "struct_info" in v1_annos
     assert "checked_type_" in v1_annos
 
 
@@ -123,7 +127,7 @@ def test_match_shape() -> None:
     assert b1_str.startswith("MatchShape(")
     assert "PrimExpr(value=`m: int64`)" in b1_str
     assert "PrimExpr(value=`n: int64`)" in b1_str
-    assert b1_str != dump_ast(b1, include_type_annotations=False, include_shape_annotations=False)
+    assert b1_str != dump_ast(b1, include_type_annotations=False, include_struct_info_annotations=False)
 
 
 def test_match_shape_unbound() -> None:
@@ -144,7 +148,7 @@ def test_var_binding() -> None:
     v0 = rx.Var("v0")
     val = rx.const(np.random.rand(24, 56))
     b0 = rx.VarBinding(v0, val)
-    b0_str = dump_ast(b0, include_type_annotations=False, include_shape_annotations=False)
+    b0_str = dump_ast(b0, include_type_annotations=False, include_struct_info_annotations=False)
     assert b0_str.startswith("VarBinding(")
     assert 'var=Var(name_hint="v0")' in b0_str
     assert "value=" in b0_str
@@ -313,7 +317,7 @@ def test_call_packed():
         dump_ast(
             f,
             include_type_annotations=False,
-            include_shape_annotations=False,
+            include_struct_info_annotations=False,
             include_call_attrs=True,
         )
     )
@@ -326,7 +330,7 @@ def test_call_packed():
     extern_call_text = dump_ast(
         extern_call,
         include_type_annotations=False,
-        include_shape_annotations=False,
+        include_struct_info_annotations=False,
         include_call_attrs=True,
     )
     assert strip_whitespace(extern_call_text) in f_str
@@ -346,7 +350,7 @@ def test_call_packed():
     op_call_text = dump_ast(
         op_call,
         include_type_annotations=False,
-        include_shape_annotations=False,
+        include_struct_info_annotations=False,
         include_call_attrs=True,
     )
     assert strip_whitespace(op_call_text) in f_str
@@ -374,7 +378,7 @@ def test_call_tir():
         dump_ast(
             foo,
             include_type_annotations=False,
-            include_shape_annotations=False,
+            include_struct_info_annotations=False,
             include_call_attrs=False,
         )
     )
@@ -386,7 +390,7 @@ def test_call_tir():
     tir_call_text = dump_ast(
         tir_call,
         include_type_annotations=False,
-        include_shape_annotations=False,
+        include_struct_info_annotations=False,
         include_call_attrs=False,
     )
     assert_fields(
@@ -419,7 +423,7 @@ def test_operators():
         dump_ast(
             foo,
             include_type_annotations=False,
-            include_shape_annotations=False,
+            include_struct_info_annotations=False,
         )
     )
     # checking that the attributes are present
@@ -436,7 +440,7 @@ def test_operators():
         dump_ast(
             bar,
             include_type_annotations=False,
-            include_shape_annotations=False,
+            include_struct_info_annotations=False,
         )
     )
     print_attrs_str = strip_whitespace('{"format": "{}"}')
@@ -451,16 +455,22 @@ def test_print_shape_annotation_non_var():
     body = normalize(f).body
     body_str = strip_whitespace(dump_ast(body))
     # the constant has a shape of (2,)
-    shape_str = strip_whitespace(
+    struct_info = strip_whitespace(
         """
-        shape_ = ShapeExpr(
-            values = [
-                PrimExpr(value=`2i64`)
-            ]
+        struct_info=TensorStructInfo(
+            dtype=int32,
+            shape=ShapeExpr(
+                values=[PrimExpr(value=`2i64`)],
+                struct_info=ShapeStructInfo(
+                    ndim=1,
+                    values=[PrimExpr(value=`2i64`)]
+                ),
+                checked_type_=ShapeType()
+            )
         )
         """
     )
-    assert shape_str in body_str
+    assert struct_info in body_str
 
 
 def test_print_type_annotation_non_var():
@@ -516,4 +526,4 @@ def test_tuple_get_item():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    tvm.testing.main()
