@@ -315,22 +315,31 @@ class BlockBuilderImpl : public BlockBuilderNode {
   void EmitNormalized(Binding binding) final {
     BlockFrame* cur_frame = CurrentBlockFrame();
 
-    if (auto* var_binding = binding.as<VarBindingNode>()) {
+    if (const auto* var_binding = binding.as<VarBindingNode>()) {
       if (!cur_frame->is_dataflow) {
         ICHECK(!var_binding->var.as<DataflowVarNode>())
-            << "Cannot emit dataflowvar in non-dataflow block";
+            << "Cannot emit dataflow var in non-dataflow block";
       }
       cur_frame->bindings.push_back(binding);
       binding_table_[var_binding->var->vid] = var_binding->value;
-    } else {
-      auto* ptr = binding.as<MatchShapeNode>();
-      ICHECK(ptr);
+    } else if (const auto* match_shape = binding.as<MatchShapeNode>()) {
       if (!cur_frame->is_dataflow) {
-        ICHECK(!ptr->var.as<DataflowVarNode>()) << "Cannot emit dataflowvar in non-dataflow block";
+        ICHECK(!match_shape->var.as<DataflowVarNode>())
+            << "Cannot emit dataflow var in non-dataflow block";
       }
       // NOTE match shape do not follow simple binding rule
       // as a result should not appear in binding table.
       cur_frame->bindings.push_back(binding);
+    } else if (const auto* match_cast = binding.as<MatchCastNode>()) {
+      if (!cur_frame->is_dataflow) {
+        ICHECK(!match_cast->var.as<DataflowVarNode>())
+            << "Cannot emit dataflow var in non-dataflow block";
+      }
+      // NOTE match shape do not follow simple binding rule
+      // as a result should not appear in binding table.
+      cur_frame->bindings.push_back(binding);
+    } else {
+      LOG(FATAL) << "Unsupported binding type: " << binding->GetTypeKey();
     }
   }
 
@@ -776,11 +785,15 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
   }
 
   Binding VisitBinding(const Binding& binding) {
-    if (binding.as<VarBindingNode>()) {
+    if (binding->IsInstance<VarBindingNode>()) {
       return this->VisitVarBinding(Downcast<VarBinding>(binding));
-    } else {
+    } else if (binding->IsInstance<MatchShapeNode>()) {
       ICHECK(binding.as<MatchShapeNode>()) << "expected VarBinding or MatchShape, got " << binding;
       return this->VisitMatchShape(Downcast<MatchShape>(binding));
+    } else if (binding->IsInstance<MatchCastNode>()) {
+      return this->VisitMatchCast(Downcast<MatchCast>(binding));
+    } else {
+      LOG(FATAL) << "Unsupported binding type: " << binding->GetTypeKey();
     }
   }
 
@@ -802,6 +815,17 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
     }
     if (binding->var.defined() && !binding->var->struct_info_.defined()) {
       UpdateStructInfo(binding->var, GetStructInfo(new_value));
+    }
+    return binding;
+  }
+
+  MatchCast VisitMatchCast(MatchCast binding) {
+    Expr new_value = this->VisitExpr(binding->value);
+    if (!new_value.same_as(binding->value)) {
+      binding = MatchCast(binding->var, new_value, binding->struct_info, binding->span);
+    }
+    if (!binding->var->struct_info_.defined()) {
+      UpdateStructInfo(binding->var, binding->struct_info);
     }
     return binding;
   }
@@ -902,9 +926,16 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
       bool is_dataflow = block->IsInstance<DataflowBlockNode>();
       Array<Binding> current;
       for (const Binding& binding : block->bindings) {
-        auto match_shape = binding.as<MatchShapeNode>();
-        auto var_binding = binding.as<VarBindingNode>();
-        const Expr& value = match_shape ? match_shape->value : var_binding->value;
+        Expr value;
+        if (const auto* var_binding = binding.as<VarBindingNode>()) {
+          value = var_binding->value;
+        } else if (const auto* match_shape = binding.as<MatchShapeNode>()) {
+          value = match_shape->value;
+        } else if (const auto* match_cast = binding.as<MatchCastNode>()) {
+          value = match_cast->value;
+        } else {
+          LOG(FATAL) << "Unknown binding type: " << binding->GetTypeKey();
+        }
         // if we encounter a nested seq, we have to flatten it:
         //   1. Append the binding block we've accumulated so far
         //   2. Reset the current block
@@ -925,10 +956,16 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
             }
             ret.push_back(block);
           }
-          current.push_back(
-              match_shape
-                  ? Downcast<Binding>(MatchShape(seq->body, match_shape->pattern, match_shape->var))
-                  : Downcast<Binding>(VarBinding(var_binding->var, seq->body)));
+
+          if (const auto* var_binding = binding.as<VarBindingNode>()) {
+            current.push_back(VarBinding(var_binding->var, seq->body));
+          } else if (const auto* match_shape = binding.as<MatchShapeNode>()) {
+            current.push_back(MatchShape(seq->body, match_shape->pattern, match_shape->var));
+          } else if (const auto* match_cast = binding.as<MatchCastNode>()) {
+            current.push_back(MatchCast(match_cast->var, seq->body, match_cast->struct_info));
+          } else {
+            LOG(FATAL) << "Unknown binding type: " << binding->GetTypeKey();
+          }
         } else {
           current.push_back(binding);
         }
