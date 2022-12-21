@@ -93,12 +93,12 @@ class VMShapeLowerMutator : public ExprMutator {
           shape_heap_, Call(ExternFunc("vm.builtin.alloc_shape_heap"), {ShapeExpr({heap_size_})})));
 
       for (Var param : node->params) {
-        if (param->shape_.operator bool() && param->shape_.value().as<ShapeExprNode>()) {
-          if (auto* param_type = param->checked_type_.as<DynTensorTypeNode>()) {
-            if (param_type->ndim != 0) {
-              Var shape = builder_->Emit(Call(ExternFunc("vm.builtin.shape_of"), {param}), "sh");
-              StoreShape(shape, Downcast<ShapeExpr>(param->shape_.value())->values);
-            }
+        // TODO(relax-team): what happens if it's tuple of Tensor?
+        if (const auto& _tensor_info = MatchStructInfo<TensorStructInfo>(param)) {
+          const TensorStructInfo& tensor_info = _tensor_info.value();
+          if (tensor_info->ndim != 0) {
+            Var shape = builder_->Emit(Call(ExternFunc("vm.builtin.shape_of"), {param}), "sh");
+            StoreShape(shape, Downcast<ShapeExpr>(tensor_info->shape.value())->values);
           }
         }
       }

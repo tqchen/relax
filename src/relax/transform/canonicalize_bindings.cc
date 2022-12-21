@@ -89,12 +89,14 @@ class BindingCanonicalizer : public ExprMutator {
     }
 
     // if the LHS and RHS have the same shape_, we canonicalize to a var binding instead
-    if (new_var.defined() && new_value->shape_.defined() &&
-        builder_->CanProveShapeEqual(Downcast<Expr>(new_var->shape_),
-                                     Downcast<Expr>(new_value->shape_))) {
-      builder_->Emit(VarBinding(new_var, new_value));
-      return;
-    }
+    // TODO(tqchen, Hzfengsy): Since MatchShape will be removed, we just comment it out to pass the
+    // compilation.
+    // if (new_var.defined() && new_value->shape_.defined() &&
+    //     builder_->CanProveShapeEqual(Downcast<Expr>(new_var->shape_),
+    //                                  Downcast<Expr>(new_value->shape_))) {
+    //   builder_->Emit(VarBinding(new_var, new_value));
+    //   return;
+    // }
 
     // reemit old binding if nothing changes
     if (new_value.same_as(binding->value)) {
@@ -130,16 +132,10 @@ class BindingCanonicalizer : public ExprMutator {
     //    In this case, we could be overriding user annotations.
     // 2. If the child is a Var and the parent is a DataflowVar.
     //    That could result in a DataflowVar leaving the current DataflowBlock.
-    bool annotations_differ =
-        AnnotationsDiffer(v->shape_, parent_var->shape_,
-                          [&](const ObjectRef& shape1, const ObjectRef& shape2) {
-                            return builder_->CanProveShapeEqual(Downcast<Expr>(shape1),
-                                                                Downcast<Expr>(shape2));
-                          }) ||
-        AnnotationsDiffer(v->checked_type_, parent_var->checked_type_,
-                          [&](const ObjectRef& type1, const ObjectRef& type2) {
-                            return tvm::StructuralEqual()(type1, type2);
-                          });
+    bool annotations_differ = AnnotationsDiffer(v->struct_info_, parent_var->struct_info_,
+                                                [&](const ObjectRef& lhs, const ObjectRef& rhs) {
+                                                  return tvm::StructuralEqual()(lhs, rhs);
+                                                });
     bool var_to_dataflow = (!v.as<DataflowVarNode>() && parent_var.as<DataflowVarNode>());
     return !annotations_differ && !var_to_dataflow;
   }
