@@ -85,20 +85,10 @@ inline tvm::relax::SeqExpr GetSeqExprForBranch(const SeqExprFrame& frame, String
   // Step 2. Collect body from the last binding.
   tvm::relax::Expr body;
   const tvm::relax::Binding& last_binding = last_block->bindings.back();
-  if (const auto* var_binding = last_binding.as<tvm::relax::VarBindingNode>()) {
-    CHECK(!var_binding->var->IsInstance<tvm::relax::DataflowVarNode>())
-        << "A non-dataflow var is expected in the last binding of '" << method << "'.";
-    body = var_binding->value;
-    *var_name = var_binding->var->name_hint();
-  } else if (const auto* match_shape = last_binding.as<tvm::relax::MatchShapeNode>()) {
-    CHECK(match_shape->var.defined() &&
-          !match_shape->var->IsInstance<tvm::relax::DataflowVarNode>())
-        << "A non-dataflow var is expected in the last binding of '" << method << "'.";
-    body = var_binding->value;
-    *var_name = match_shape->var->name_hint();
-  } else {
-    ICHECK(false) << "TypeError: Unsupported binding type: " << last_binding->GetTypeKey();
-  }
+  CHECK(!last_binding->var->IsInstance<tvm::relax::DataflowVarNode>())
+      << "A non-dataflow var is expected in the last binding of '" << method << "'.";
+  body = last_binding->value;
+  *var_name = last_binding->var->name_hint();
 
   // Step 3. Re-collect binding blocks to remove the last binding.
   Array<tvm::relax::BindingBlock> new_blocks(frame->binding_blocks.begin(),

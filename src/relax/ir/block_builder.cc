@@ -194,32 +194,13 @@ class BlockBuilderImpl : public BlockBuilderNode {
     return this->Emit(expr, CurrentBlockFrame()->is_dataflow, name_hint);
   }
 
-  Var EmitMatchShape(Expr value, Array<PrimExpr> pattern, String name_hint) final {
-    value = this->Normalize(value);
-
-    BlockFrame* cur_frame = CurrentBlockFrame();
-    Var var = CreateVar(cur_frame->is_dataflow, name_hint);
-
-    if (value->struct_info_.as<ShapeStructInfoNode>()) {
-      UpdateStructInfo(var, ShapeStructInfo(pattern.size()));
-    } else if (const auto* tensor_sinfo = value->struct_info_.as<TensorStructInfoNode>()) {
-      UpdateStructInfo(var, TensorStructInfo(ShapeExpr(pattern), tensor_sinfo->dtype));
-    } else {
-      this->ReportFatal(
-          Diagnostic::Error(value)
-          << "The value passed to EmitMatchShape must be of TensorStructInfo or ShapeStructInfo.");
-    }
-
-    MatchShape match_shape = MatchShape(value, pattern, var);
-    cur_frame->bindings.push_back(match_shape);
-    // NOTE match shape do not follow simple binding rule
-    // as a result should not appear in binding table.
-    return var;
-  }
-
-
   Var EmitMatchCast(Expr value, StructInfo struct_info, String name_hint) final {
     value = this->Normalize(value);
+
+    CHECK(IsBaseOf(GetStructInfo(value), struct_info))
+        << "The struct info of the value expects to be base of the given struct info in MatchCast. "
+           "But got value struct info: "
+        << GetStructInfo(value) << ", given struct info: " << struct_info;
 
     BlockFrame* cur_frame = CurrentBlockFrame();
     Var var = CreateVar(cur_frame->is_dataflow, name_hint);
@@ -253,19 +234,6 @@ class BlockBuilderImpl : public BlockBuilderNode {
       ICHECK(var_binding->value->struct_info_.defined());
       cur_frame->bindings.push_back(binding);
       binding_table_[var_binding->var->vid] = var_binding->value;
-    } else if (const auto* match_shape = binding.as<MatchShapeNode>()) {
-      ICHECK(match_shape);
-      if (match_shape->var.defined()) {
-        if (!cur_frame->is_dataflow) {
-          ICHECK(!match_shape->var.as<DataflowVarNode>())
-              << "Cannot emit dataflowvar in non-dataflow block";
-        }
-        ICHECK(match_shape->var->struct_info_.defined());
-      }
-      ICHECK(match_shape->value->struct_info_.defined());
-      // NOTE match shape do not follow simple binding rule
-      // as a result should not appear in binding table.
-      cur_frame->bindings.push_back(binding);
     } else if (const auto* match_cast = binding.as<MatchCastNode>()) {
       if (!cur_frame->is_dataflow) {
         ICHECK(!match_cast->var.as<DataflowVarNode>())
@@ -710,13 +678,10 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
   Binding VisitBinding(const Binding& binding) {
     if (binding->IsInstance<VarBindingNode>()) {
       return this->VisitVarBinding(Downcast<VarBinding>(binding));
-    } else if (binding->IsInstance<MatchShapeNode>()) {
-      ICHECK(binding.as<MatchShapeNode>()) << "expected VarBinding or MatchShape, got " << binding;
-      return this->VisitMatchShape(Downcast<MatchShape>(binding));
-    } else {
-      ICHECK(binding->IsInstance<MatchCastNode>())
-          << "Unsupported binding type: " << binding->GetTypeKey();
+    } else if (binding->IsInstance<MatchCastNode>()) {
       return this->VisitMatchCast(Downcast<MatchCast>(binding));
+    } else {
+      LOG(FATAL) << "Unsupported binding type: " << binding->GetTypeKey();
     }
   }
 
@@ -731,19 +696,12 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
     return binding;
   }
 
-  MatchShape VisitMatchShape(MatchShape binding) {
-    Expr new_value = this->VisitExpr(binding->value);
-    if (!new_value.same_as(binding->value)) {
-      binding = MatchShape(new_value, binding->pattern, binding->var, binding->span);
-    }
-    if (binding->var.defined() && !binding->var->struct_info_.defined()) {
-      UpdateStructInfo(binding->var, GetStructInfo(new_value));
-    }
-    return binding;
-  }
-
   MatchCast VisitMatchCast(MatchCast binding) {
     Expr new_value = this->VisitExpr(binding->value);
+    CHECK(IsBaseOf(GetStructInfo(new_value), binding->struct_info))
+        << "The struct info of the value expects to be base of the given struct info in MatchCast. "
+           "But got value struct info: "
+        << GetStructInfo(new_value) << ", given struct info: " << binding->struct_info;
     if (!new_value.same_as(binding->value)) {
       binding = MatchCast(binding->var, new_value, binding->struct_info, binding->span);
     }
@@ -852,8 +810,6 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
         Expr value;
         if (const auto* var_binding = binding.as<VarBindingNode>()) {
           value = var_binding->value;
-        } else if (const auto* match_shape = binding.as<MatchShapeNode>()) {
-          value = match_shape->value;
         } else if (const auto* match_cast = binding.as<MatchCastNode>()) {
           value = match_cast->value;
         } else {
@@ -882,8 +838,6 @@ class Normalizer : public BlockBuilderImpl, private ExprFunctor<Expr(const Expr&
 
           if (const auto* var_binding = binding.as<VarBindingNode>()) {
             current.push_back(VarBinding(var_binding->var, seq->body));
-          } else if (const auto* match_shape = binding.as<MatchShapeNode>()) {
-            current.push_back(MatchShape(seq->body, match_shape->pattern, match_shape->var));
           } else if (const auto* match_cast = binding.as<MatchCastNode>()) {
             current.push_back(MatchCast(match_cast->var, seq->body, match_cast->struct_info));
           } else {
@@ -973,11 +927,6 @@ TVM_REGISTER_GLOBAL("relax.BlockBuilderEmit").set_body_typed([](BlockBuilder bui
 TVM_REGISTER_GLOBAL("relax.BlockBuilderEmitMatchCast")
     .set_body_typed([](BlockBuilder builder, Expr value, StructInfo struct_info) {
       return builder->EmitMatchCast(value, struct_info);
-    });
-
-TVM_REGISTER_GLOBAL("relax.BlockBuilderEmitMatchShape")
-    .set_body_typed([](BlockBuilder builder, Expr value, Array<PrimExpr> pattern) {
-      return builder->EmitMatchShape(value, pattern);
     });
 
 TVM_REGISTER_GLOBAL("relax.BlockBuilderEmitOutput")
