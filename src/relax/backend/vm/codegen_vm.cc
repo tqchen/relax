@@ -49,7 +49,7 @@ using namespace relax;
 // Helper function to get the function name of the registered packed function implementation of
 // relax operator.
 FCallPacked GetPackedFuncName(const Call& call) {
-  auto op_map = Op::GetAttrMap<FCallPacked>("FCallPacked");
+  static auto op_map = Op::GetAttrMap<FCallPacked>("FCallPacked");
   if (call->op.as<OpNode>()) {
     Op op = Downcast<Op>(call->op);
     if (op_map.count(op)) {
@@ -81,7 +81,7 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     }
   }
 
-  Instruction::Arg VisitExpr_(const FunctionNode* func_node) {
+  Instruction::Arg VisitExpr_(const FunctionNode* func_node) final {
     Optional<String> gsymbol = func_node->GetAttr<String>(tvm::attr::kGlobalSymbol);
     ICHECK(gsymbol.defined()) << "there should be no local functions in Relax VM codegen phase. "
                                  "Did you forget to apply LambdaLift or AttachGlobalSymbol Pass?";
@@ -100,11 +100,14 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     }
     Instruction::Arg ret = ExprFunctor::VisitExpr(func_node->body);
     builder_->EmitRet(EnsureReg(ret));
+    builder_->EndFunction(gsymbol.value());
+    // reset register number to be 0;
     registers_num_ = 0;
+    var_arg_map_.clear();
     return ret;
   }
 
-  Instruction::Arg VisitExpr_(const SeqExprNode* op) {
+  Instruction::Arg VisitExpr_(const SeqExprNode* op) final {
     for (auto block : op->blocks) {
       for (Binding binding : block->bindings) {
         Instruction::Arg value;
@@ -123,7 +126,7 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return ret_reg;
   }
 
-  Instruction::Arg VisitExpr_(const CallNode* call_node) {
+  Instruction::Arg VisitExpr_(const CallNode* call_node) final {
     Call call = GetRef<Call>(call_node);
 
     if (call_node->op == null_value_op_) {
@@ -148,12 +151,6 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
         EmitAllocStorage(call, dst_reg);
       } else if (call_node->op == alloc_tensor_op_) {
         EmitAllocTensor(call, dst_reg);
-      } else if (call_node->op == call_tir_dyn_op_) {
-        EmitTirDynOp(call, dst_reg);
-      } else if (call_node->op == make_closure_op_) {
-        EmitAllocClosure(call, dst_reg);
-      } else if (call_node->op == invoke_closure_op_) {
-        EmitInvokeClosure(call, dst_reg);
       } else {
         // every "normal" operator is lowered to a global var in the IRModule. The Attrs for those
         // ops are handled in a pass when lowering them to TIR.
@@ -165,7 +162,7 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return Instruction::Arg::Register(dst_reg);
   }
 
-  Instruction::Arg VisitExpr_(const IfNode* op) {
+  Instruction::Arg VisitExpr_(const IfNode* op) final {
     const If& ife = GetRef<If>(op);
 
     // Visit the condition expression
@@ -208,24 +205,18 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return Instruction::Arg::Register(merge_register);
   }
 
-  Instruction::Arg VisitExpr_(const VarNode* op) {
+  Instruction::Arg VisitExpr_(const VarNode* op) final {
     Var var = GetRef<Var>(op);
     auto it = this->var_arg_map_.find(var);
     ICHECK(it != this->var_arg_map_.end()) << "Var " << var << " is not defined";
     return it->second;
   }
 
-  Instruction::Arg VisitExpr_(const ExternFuncNode* op) {
-    // TODO(relax-team) turn into get function builtin.
-    LOG(FATAL) << "ExternFunc cannot appear directly in args, use call_builtin instead";
-    return Instruction::Arg::Register(Instruction::kVoidRegister);
-  }
-
-  Instruction::Arg VisitExpr_(const ConstantNode* op) {
+  Instruction::Arg VisitExpr_(const ConstantNode* op) final {
     return builder_->ConvertConstant(op->data);
   }
 
-  Instruction::Arg VisitExpr_(const ShapeExprNode* op) {
+  Instruction::Arg VisitExpr_(const ShapeExprNode* op) final {
     std::vector<int64_t> shape;
     for (PrimExpr e : op->values) {
       if (auto* int_value = e.as<IntImmNode>()) {
@@ -237,7 +228,7 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return builder_->ConvertConstant(ShapeTuple(shape));
   }
 
-  Instruction::Arg VisitExpr_(const TupleNode* op) {
+  Instruction::Arg VisitExpr_(const TupleNode* op) final {
     Tuple tuple = GetRef<Tuple>(op);
     std::vector<Instruction::Arg> args;
     for (auto arg : tuple->fields) {
@@ -249,7 +240,7 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return Instruction::Arg::Register(dst_register);
   }
 
-  Instruction::Arg VisitExpr_(const TupleGetItemNode* op) {
+  Instruction::Arg VisitExpr_(const TupleGetItemNode* op) final {
     TupleGetItem expr = GetRef<TupleGetItem>(op);
     std::vector<Instruction::Arg> args = {this->VisitExpr(expr->tuple)};
 
@@ -261,27 +252,40 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return Instruction::Arg::Register(dst_register);
   }
 
-  String LookupFuncGlobalSymbol(Expr op) {
-    if (auto* extern_func = op.as<ExternFuncNode>()) {
-      return extern_func->global_symbol;
-    } else if (auto* gvar = op.as<GlobalVarNode>()) {
-      // Run a look up in the env to see if it maps to an extern func.
-      auto it = ctx_mod_->functions.find(GetRef<GlobalVar>(gvar));
-      if (it != ctx_mod_->functions.end()) {
-        BaseFunc func = (*it).second;
-        if (auto* efunc = func.as<ExternFuncNode>()) {
-          return efunc->global_symbol;
-        }
+  Instruction::Arg VisitExpr_(const GlobalVarNode* op) final {
+    GlobalVar gvar = GetRef<GlobalVar>(op);
+    Optional<String> symbol;
+    VMFuncInfo::FuncKind kind = VMFuncInfo::FuncKind::kPackedFunc;
+
+    // Run a look up in the env to see if it maps to an extern func.
+    auto it = ctx_mod_->functions.find(gvar);
+    if (it != ctx_mod_->functions.end()) {
+      BaseFunc func = (*it).second;
+      if (auto* efunc = func.as<ExternFuncNode>()) {
+        symbol = efunc->global_symbol;
+        kind = VMFuncInfo::FuncKind::kPackedFunc;
+      } else if (func.as<FunctionNode>()) {
+        symbol = gvar->name_hint;
+        kind = VMFuncInfo::FuncKind::kVMFunc;
       }
-      // GlobalVar can be reference to a Relax function or a TIR primfunc
-      // At this point: all global var must corresponds to the right symbol.
-      // TODO(relax-team): switch everything to extern before splitting TIR/relax
-      // so we do not have idle global var here.
-      return gvar->name_hint;
-    } else {
-      LOG(FATAL) << "CodeGenVM does not support calls to " << op->GetTypeKey();
-      return "";
     }
+    // GlobalVar can be reference to a Relax function or a TIR primfunc
+    // At this point: all global var must corresponds to the right symbol.
+    // TODO(relax-team): switch everything to extern before splitting TIR/relax
+    // so we do not have idle global var here.
+    if (!symbol.defined()) {
+      symbol = gvar->name_hint;
+      kind = VMFuncInfo::FuncKind::kPackedFunc;
+    }
+    // declare the function to be safe.
+    ICHECK(symbol.defined());
+    builder_->DeclareFunction(symbol.value(), kind);
+    return builder_->GetFunction(symbol.value());
+  }
+
+  Instruction::Arg VisitExpr_(const ExternFuncNode* op) final {
+    builder_->DeclareFunction(op->global_symbol, VMFuncInfo::FuncKind::kPackedFunc);
+    return builder_->GetFunction(op->global_symbol);
   }
 
   void EmitAllocStorage(const Call& call_node, RegName dst_reg) {
@@ -330,7 +334,7 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
       args.push_back(Instruction::Arg::Register(Instruction::kVMRegister));
     }
 
-    auto symbol = this->LookupFuncGlobalSymbol(call_node->args[0]);
+    auto func = this->VisitExpr(call_node->args[0]);
     auto tuple_arg = Downcast<Tuple>(call_node->args[1]);
 
     // Handle args of the call
@@ -353,34 +357,16 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
       }
     }
 
-    builder_->EmitCall(symbol, args, dst_reg);
-  }
-
-  void EmitTirDynOp(const Call& call_node, RegName dst_reg) {
-    ICHECK(call_node->args.size() == 2);
-    ICHECK(call_node->args[0]->IsInstance<GlobalVarNode>());
-    ICHECK(call_node->args[1]->IsInstance<TupleNode>());
-
-    auto gv = Downcast<GlobalVar>(call_node->args[0]);
-    auto tir_args = Downcast<Tuple>(call_node->args[1]);
-    auto func_name = gv->name_hint;
-
-    std::vector<Instruction::Arg> args;
-    args.push_back(Instruction::Arg::Register(Instruction::kVMRegister));
-    args.push_back(builder_->ConvertConstant(func_name));
-    for (Expr arg : tir_args->fields) {
-      args.push_back(this->VisitExpr(arg));
-    }
-
-    builder_->EmitCall("vm.call_tir_dyn", args, dst_reg);
+    builder_->EmitCall(func, args, dst_reg);
   }
 
   void EmitNormalCall(const Call& call_node, RegName dst_reg) {
-    String name = LookupFuncGlobalSymbol(call_node->op);
+    Instruction::Arg func = VisitExpr(call_node->op);
     std::vector<Instruction::Arg> args = VisitArray(call_node->args);
-    builder_->EmitCall(name, args, dst_reg);
+    builder_->EmitCall(func, args, dst_reg);
   }
 
+  // TODO(relax-team) revisit after PrimValue.
   // Emit the `call_node` attributes as constants and append these constants to `args` vector.
   void AppendAttrsAsConstants(const Call& call_node, std::vector<Instruction::Arg>& args) {
     auto attrs = call_node->attrs;
@@ -419,44 +405,6 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     builder_->EmitCall(name, args, dst_reg);
   }
 
-  void EmitAllocClosure(const Call& call_node, RegName dst_reg) {
-    ICHECK(call_node->args.size() == 2);
-    ICHECK(call_node->args[0]->IsInstance<GlobalVarNode>());
-    ICHECK(call_node->args[1]->IsInstance<TupleNode>());
-
-    auto gv = Downcast<GlobalVar>(call_node->args[0]);
-    auto closure_args = Downcast<Tuple>(call_node->args[1]);
-    auto func_name = gv->name_hint;
-
-    std::vector<Instruction::Arg> args;
-    args.push_back(builder_->ConvertConstant(func_name));
-    for (Expr arg : closure_args->fields) {
-      args.push_back(this->VisitExpr(arg));
-    }
-
-    builder_->EmitCall("vm.builtin.alloc_closure", args, dst_reg);
-  }
-
-  void EmitInvokeClosure(const Call& call_node, RegName dst_reg) {
-    ICHECK(call_node->args.size() == 2);
-    ICHECK(call_node->args[0]->IsInstance<VarNode>());
-    ICHECK(call_node->args[1]->IsInstance<TupleNode>());
-
-    std::vector<Instruction::Arg> args;
-    // VM is utilized to help get the Function in builtin packedfunc
-    args.push_back(Instruction::Arg::Register(Instruction::kVMRegister));
-
-    args.push_back(this->VisitExpr(call_node->args[0]));
-
-    // args for the invoke_closure
-    auto invoke_closure_args = Downcast<Tuple>(call_node->args[1]);
-    for (Expr arg : invoke_closure_args->fields) {
-      args.push_back(this->VisitExpr(arg));
-    }
-
-    builder_->EmitCall("vm.builtin.invoke_closure", args, dst_reg);
-  }
-
   std::vector<Instruction::Arg> VisitArray(const Array<Expr>& arr) {
     std::vector<Instruction::Arg> ret;
     for (size_t i = 0; i < arr.size(); ++i) {
@@ -465,8 +413,6 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
     return ret;
   }
 
-  /*! \brief A counter for naming local functions. */
-  size_t local_func_counter_ = 0;
   /*! \brief Internal ExecBuilder. */
   relax::ExecBuilder builder_;
   /*!
@@ -481,16 +427,11 @@ class CodeGenVM : public ExprFunctor<Instruction::Arg(const Expr&)> {
   /*! \brief Cache ops that need to be frequently used later to reduce lookup overhead. */
   const Op& alloc_storage_op_ = Op::Get("relax.vm.builtin.alloc_storage");
   const Op& alloc_tensor_op_ = Op::Get("relax.vm.builtin.alloc_tensor");
-  const Op& store_shape_op_ = Op::Get("relax.vm.builtin.store_shape");
-  const Op& load_shape_op_ = Op::Get("relax.vm.builtin.load_shape");
-  const Op& call_tir_dyn_op_ = Op::Get("relax.vm.call_tir_dyn");
   const Op& call_builtin_op_ = Op::Get("relax.call_builtin");
   const Op& null_value_op_ = Op::Get("relax.null_value");
   const Op& unique_op_ = Op::Get("relax.unique");
   const Op& print_op_ = Op::Get("relax.print");
   const Op& assert_op_ = Op::Get("relax.assert_op");
-  const Op& make_closure_op_ = Op::Get("relax.make_closure");
-  const Op& invoke_closure_op_ = Op::Get("relax.invoke_closure");
 };
 
 void VMCodeGen::CodeGen(IRModule mod) {

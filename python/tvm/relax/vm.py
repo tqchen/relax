@@ -546,7 +546,7 @@ def build(
 
     passes = [relax.transform.ToNonDataflow()]
     passes.append(relax.transform.CallTIRRewrite())
-    passes.append(relax.transform.VMMemoryLower())
+    passes.append(relax.transform.VMBuiltinLower())
     passes.append(relax.transform.VMShapeLower())
     passes.append(relax.transform.AttachGlobalSymbol())
     seq = tvm.transform.Sequential(passes)
