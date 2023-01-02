@@ -343,8 +343,8 @@ TVM_REGISTER_GLOBAL("vm.builtin.tuple_getitem").set_body_typed([](runtime::ADT a
  * \param arg_offset The offset of argument.
  * \return 0 when no error is thrown, -1 when failure happens
  */
-TVM_DLL int TVMBackendAnyListSetPackedArg(void* anylist, int index, TVMValue* args, int* type_codes,
-                                          int arg_offset) {
+TVM_DLL int TVMBackendAnyListSetPackedArg(void* anylist, int64_t index, TVMValue* args, int* type_codes,
+                                          int64_t arg_offset) {
   using namespace tvm::runtime;
   API_BEGIN();
   auto* list = static_cast<TVMRetValue*>(anylist);
@@ -358,7 +358,7 @@ TVM_DLL int TVMBackendAnyListSetPackedArg(void* anylist, int index, TVMValue* ar
  * \param anylist The handle to the anylist, backed by TVMRetValue*
  * \param int The index.
  */
-TVM_DLL int TVMBackendAnyListResetItem(void* anylist, int index) {
+TVM_DLL int TVMBackendAnyListResetItem(void* anylist, int64_t index) {
   using namespace tvm::runtime;
   API_BEGIN();
   auto* list = static_cast<TVMRetValue*>(anylist);
@@ -376,8 +376,8 @@ TVM_DLL int TVMBackendAnyListResetItem(void* anylist, int index) {
  * \param arg_offset The offset of argument.
  * \return 0 when no error is thrown, -1 when failure happens.
  */
-TVM_DLL int TVMBackendAnyListMoveFromPackedReturn(void* anylist, int index, TVMValue* args,
-                                                  int* type_codes, int ret_offset) {
+TVM_DLL int TVMBackendAnyListMoveFromPackedReturn(void* anylist, int64_t index, TVMValue* args,
+                                                  int* type_codes, int64_t ret_offset) {
   using namespace tvm::runtime;
   API_BEGIN();
   auto* list = static_cast<TVMRetValue*>(anylist);
