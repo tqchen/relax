@@ -33,6 +33,8 @@
 #include <tvm/runtime/relax_vm/memory_manager.h>
 #include <tvm/runtime/relax_vm/vm.h>
 
+#include "../runtime_base.h"
+
 namespace tvm {
 namespace runtime {
 namespace relax_vm {
@@ -327,3 +329,45 @@ TVM_REGISTER_GLOBAL("vm.builtin.tuple_getitem").set_body_typed([](runtime::ADT a
 }  // namespace relax_vm
 }  // namespace runtime
 }  // namespace tvm
+
+//-------------------------------------------------
+// AnyList C runtime API: keep in relax for now.
+//--------------------------------------------------
+/*!
+ * \brief Backend function to get anylist item and set into Packed Func call arg stack.
+ *
+ * \param anylist The handle to the anylist, backed by TVMRetValue*
+ * \param int The index.
+ * \param args The args stack.
+ * \param type_codes The type codes stack.
+ * \param arg_offset The offset of argument.
+ * \return 0 when no error is thrown, -1 when failure happens
+ */
+TVM_DLL int TVMBackendAnyListSetPackedArg(void* anylist, int index, TVMValue* args, int* type_codes,
+                                          int arg_offset) {
+  using namespace tvm::runtime;
+  API_BEGIN();
+  auto* list = static_cast<TVMRetValue*>(anylist);
+  TVMArgsSetter setter(args, type_codes);
+  setter(arg_offset, list[index]);
+  API_END();
+}
+
+/*!
+ * \brief Backend function to set anylist item by moving from packed func return.
+ *
+ * \param anylist The handle to the anylist, backed by TVMRetValue*
+ * \param int The index.
+ * \param args The args stack.
+ * \param type_codes The type codes stack.
+ * \param arg_offset The offset of argument.
+ * \return 0 when no error is thrown, -1 when failure happens.
+ */
+TVM_DLL int TVMBackendAnyListMoveFromPackedReturn(void* anylist, int index, TVMValue* args,
+                                                  int* type_codes, int ret_offset) {
+  using namespace tvm::runtime;
+  API_BEGIN();
+  auto* list = static_cast<TVMRetValue*>(anylist);
+  list[index].MoveFromCHost(args[ret_offset], type_codes[ret_offset]);
+  API_END();
+}
