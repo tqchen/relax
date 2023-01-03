@@ -60,16 +60,18 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
       : builder_(builder), ctx_mod_(ctx_mod) {}
 
   static IRModule Run(relax::ExecBuilder builder, IRModule mod) {
-    IRModule res_mod({});
+    // create a new copy
+    IRModule res_mod = mod;
+    res_mod.CopyOnWrite();
+
     CodeGenVMTIR codegen(builder, mod);
     // Remove relax function and turn into TIR func.
     for (auto& p : mod->functions) {
       if (auto* func = p.second.as<FunctionNode>()) {
         auto tir_func = codegen.Codegen(GetRef<Function>(func));
-        auto gsymbol =  func->GetAttr<String>(tvm::attr::kGlobalSymbol);
-        res_mod->Add(res_mod->GetGlobalVar(gsymbol.value()), tir_func);
-      } else {
-        res_mod->Add(p.first, p.second);
+        auto gsymbol =  tir_func->GetAttr<String>(tvm::attr::kGlobalSymbol);
+        res_mod->Add(GlobalVar(gsymbol.value()), tir_func);
+        res_mod->Remove(p.first);
       }
     }
     return res_mod;
