@@ -54,7 +54,7 @@ using vm::VMFuncInfo;
  * \note Skip CallPacked with special attrs for now, as they can be
  *       further simplified with PrimValue.
  */
-class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
+class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&, int64_t)> {
  public:
   explicit CodeGenVMTIR(relax::ExecBuilder builder, IRModule ctx_mod)
       : builder_(builder), ctx_mod_(ctx_mod) {}
@@ -78,27 +78,54 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
   }
 
  private:
+  /*!
+   * \param expr The input expression.
+   * \param dst_reg A pre-allocated register that can be used to hold the value, can be kNoReg.
+   * \return The result transformed expression. Can be NullOpt if the expr has void type.
+   * \note The callee do not have to store value into dst_reg. But is encouraged to do so if
+   *       a temp result register is needed. The caller should call EnsureValueOnReg to
+   *       generate additional copy if it is not on the right spot.
+   */
+  Optional<PrimExpr> VisitExpr(const Expr& expr, int64_t dst_reg = kNoReg) final {
+    return ExprFunctor::VisitExpr(expr, dst_reg);
+  }
+
   int64_t NewRegister() { return registers_num_++; }
+
+  // Ensure the expr value is on register slot
+  bool ValueIsOnReg(const PrimExpr& expr, int64_t reg_slot) {
+    if (auto* ptr = expr.as<tir::CallNode>()) {
+      if (ptr->op.same_as(tir::builtin::anylist_getitem()) &&
+          ptr->args[0].same_as(reg_anylist_handle_)) {
+        if (auto* pslot = ptr->args[1].as<IntImmNode>())
+          if (pslot->value == reg_slot) return true;
+      }
+    }
+    return false;
+  }
+
+  void EnsureValueOnReg(const PrimExpr& expr, int64_t reg_slot) {
+    if (!ValueIsOnReg(expr, reg_slot)) {
+      this->EmitCallPacked("vm.builtin.copy", {expr}, reg_slot);
+    }
+  }
 
   static IntImm ConstInt64(int64_t value) {
     return IntImm(DataType::Int(64), value);
   }
 
   PrimExpr RegListGet(int64_t slot) const {
-    // use 128 bits to represent any
-    return tir::Call(DataType::Handle(128), tir::builtin::anylist_getitem(),
+    return tir::Call(DataType::Handle(), tir::builtin::anylist_getitem(),
                      {reg_anylist_handle_, ConstInt64(slot)});
   }
 
   PrimExpr ConstListGet(int64_t slot) const {
-    // use 128 bits to represent any
-    return tir::Call(DataType::Handle(128), tir::builtin::anylist_getitem(),
+    return tir::Call(DataType::Handle(), tir::builtin::anylist_getitem(),
                      {const_anylist_handle_, ConstInt64(slot)});
   }
 
   PrimExpr FuncListGet(int64_t slot) const {
-    // use 128 bits to represent any
-    return tir::Call(DataType::Handle(128), tir::builtin::anylist_getitem(),
+    return tir::Call(DataType::Handle(), tir::builtin::anylist_getitem(),
                      {func_anylist_handle_, ConstInt64(slot)});
   }
 
@@ -107,10 +134,10 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     stmt_stack_.back().emplace_back(stmt);
   }
 
-  void EmitCallPacked(String name, const Array<PrimExpr>& args, int64_t dst_anylist_slot = -1) {
+  void EmitCallPacked(String name, const Array<PrimExpr>& args, int64_t dst_anylist_slot = kNoReg) {
     Array<PrimExpr> all_args;
     // negative index indicate return value can be discarded, emit call_packed
-    if (dst_anylist_slot >= 0) {
+    if (dst_anylist_slot != kNoReg) {
       all_args =
         {reg_anylist_handle_, ConstInt64(dst_anylist_slot)};
     }
@@ -118,7 +145,7 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     for (PrimExpr arg : args) {
       all_args.push_back(arg);
     }
-    if (dst_anylist_slot >= 0) {
+    if (dst_anylist_slot != kNoReg) {
       this->EmitStmt(
         tir::Evaluate(
           tir::Call(DataType::Int(32), tir::builtin::anylist_setitem_call_packed(), all_args)));
@@ -154,12 +181,12 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
       ICHECK_EQ(static_cast<size_t>(r), i);
       this->var_map_.insert({func->params[i], RegListGet(r)});
     }
-    size_t ret_reg = NewRegister();
+    int64_t ret_reg = NewRegister();
 
     tir::Stmt body = WithNewScope([&]() {
-      Optional<PrimExpr> ret = ExprFunctor::VisitExpr(func->body);
+      Optional<PrimExpr> ret = ExprFunctor::VisitExpr(func->body, ret_reg);
       if (ret.defined()) {
-        this->EmitCallPacked("vm.builtin.copy", {ret.value()}, ret_reg);
+        this->EnsureValueOnReg(ret.value(), ret_reg);
       }
     });
 
@@ -179,7 +206,7 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     return tir_func;
   }
 
-  Optional<PrimExpr> VisitExpr_(const SeqExprNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const SeqExprNode* op, int64_t dst_reg) final {
     for (auto block : op->blocks) {
       for (Binding binding : block->bindings) {
         Optional<PrimExpr> value;
@@ -193,10 +220,10 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
         this->var_map_.insert({binding->var, value});
       }
     }
-    return this->VisitExpr(op->body);
+    return this->VisitExpr(op->body, dst_reg);
   }
 
-  Optional<PrimExpr> VisitExpr_(const CallNode* call_node) final {
+  Optional<PrimExpr> VisitExpr_(const CallNode* call_node, int64_t dst_reg) final {
     Call call = GetRef<Call>(call_node);
 
     if (call_node->op == null_value_op_) {
@@ -204,7 +231,13 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
                        tir::builtin::reinterpret(),
                        {IntImm(DataType::Int(64), 0)});
     }
-    int64_t dst_reg = HasVoidStructInfo(call) ?  -1 : NewRegister();
+    // always return null if the result value is void
+    if (HasVoidStructInfo(call)) {
+      dst_reg = kNoReg;
+    } else if (dst_reg == kNoReg) {
+      dst_reg = NewRegister();
+    }
+
     if (call->op.as<OpNode>()) {
       if (call_node->op == call_builtin_op_) {
         EmitCallBuiltin(call, dst_reg);
@@ -220,42 +253,42 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     } else {
       EmitNormalCall(call, dst_reg);
     }
-    if (dst_reg >= 0) {
+    if (dst_reg != kNoReg) {
       return RegListGet(dst_reg);
     } else {
       return NullOpt;
     }
   }
 
-  Optional<PrimExpr> VisitExpr_(const IfNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const IfNode* op, int64_t dst_reg) final {
     // Reserve a register for return
-    size_t merge_register = NewRegister();
+    int64_t merge_register = dst_reg != kNoReg ? dst_reg : NewRegister();
     PrimExpr cond_value = this->VisitExpr(op->cond).value();
 
-    tir::Stmt true_branch = WithNewScope([&](){
-      PrimExpr true_value = this->VisitExpr(op->true_branch).value();
-      this->EmitCallPacked("vm.builtin.copy", {true_value}, merge_register);
+    tir::Stmt true_branch = WithNewScope([&]() {
+      PrimExpr true_value = this->VisitExpr(op->true_branch, merge_register).value();
+      EnsureValueOnReg(true_value, merge_register);
     });
     tir::Stmt false_branch = WithNewScope([&](){
-      PrimExpr false_value = this->VisitExpr(op->false_branch).value();
-      this->EmitCallPacked("vm.builtin.copy", {false_value}, merge_register);
+      PrimExpr false_value = this->VisitExpr(op->false_branch, merge_register).value();
+      EnsureValueOnReg(false_value, merge_register);
     });
     this->EmitStmt(tir::IfThenElse(cond_value, true_branch, false_branch));
     return RegListGet(merge_register);
   }
 
-  Optional<PrimExpr> VisitExpr_(const VarNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const VarNode* op, int64_t dst_reg) final {
     Var var = GetRef<Var>(op);
     auto it = this->var_map_.find(var);
     ICHECK(it != this->var_map_.end()) << "Var " << var << " is not defined";
     return it->second;
   }
 
-  Optional<PrimExpr> VisitExpr_(const ConstantNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const ConstantNode* op, int64_t dst_reg) final {
     return ConstListGet(builder_->ConvertConstant(op->data).value());
   }
 
-  Optional<PrimExpr> VisitExpr_(const ShapeExprNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const ShapeExprNode* op, int64_t dst_reg) final {
     std::vector<int64_t> shape;
     for (PrimExpr e : op->values) {
       if (auto* int_value = e.as<IntImmNode>()) {
@@ -267,26 +300,28 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     return ConstListGet(builder_->ConvertConstant(ShapeTuple(shape)).value());
   }
 
-  Optional<PrimExpr> VisitExpr_(const TupleNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const TupleNode* op, int64_t dst_reg) final {
     Tuple tuple = GetRef<Tuple>(op);
     Array<PrimExpr> args;
     for (auto arg : tuple->fields) {
       args.push_back(this->VisitExpr(arg).value());
     }
-    int32_t dst_register = NewRegister();
-    this->EmitCallPacked("runtime.Tuple", args, dst_register);
-    return RegListGet(dst_register);
+    if (dst_reg == kNoReg) {
+      dst_reg = NewRegister();
+    }
+    this->EmitCallPacked("runtime.Tuple", args, dst_reg);
+    return RegListGet(dst_reg);
   }
 
-  Optional<PrimExpr> VisitExpr_(const TupleGetItemNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const TupleGetItemNode* op, int64_t dst_reg) final {
     TupleGetItem expr = GetRef<TupleGetItem>(op);
     Array<PrimExpr> args = {this->VisitExpr(expr->tuple).value()};
-
     args.push_back(ConstInt64(expr->index));
-
-    int64_t dst_register = NewRegister();
-    this->EmitCallPacked("vm.builtin.tuple_getitem", args, dst_register);
-    return RegListGet(dst_register);
+    if (dst_reg == kNoReg) {
+      dst_reg = NewRegister();
+    }
+    this->EmitCallPacked("vm.builtin.tuple_getitem", args, dst_reg);
+    return RegListGet(dst_reg);
   }
 
   // Lookup the function and see if it matches
@@ -319,7 +354,7 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     }
   }
 
-  Optional<PrimExpr> VisitExpr_(const GlobalVarNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const GlobalVarNode* op, int64_t dst_reg) final {
     VMFuncInfo::FuncKind kind;
     auto symbol = LookupFunction(GetRef<Expr>(op), &kind);
     ICHECK(symbol.defined());
@@ -327,7 +362,7 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     return FuncListGet(builder_->GetFunction(symbol.value()).value());
   }
 
-  Optional<PrimExpr> VisitExpr_(const ExternFuncNode* op) final {
+  Optional<PrimExpr> VisitExpr_(const ExternFuncNode* op, int64_t dst_reg) final {
     builder_->DeclareFunction(op->global_symbol, VMFuncInfo::FuncKind::kPackedFunc);
     return FuncListGet(builder_->GetFunction(op->global_symbol).value());
   }
@@ -452,6 +487,8 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
   std::unordered_map<Var, Optional<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> var_map_;
   /*! \brief the context module. */
   IRModule ctx_mod_;
+  /*! \brief special mark to indicate there is no reg. */
+  const static int64_t kNoReg = -1;
   /*! \brief Cache ops that need to be frequently used later to reduce lookup overhead. */
   const Op& alloc_storage_op_ = Op::Get("relax.vm.builtin.alloc_storage");
   const Op& alloc_tensor_op_ = Op::Get("relax.vm.builtin.alloc_tensor");

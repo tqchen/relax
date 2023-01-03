@@ -474,9 +474,9 @@ def _vmcodegen(
         Left over IRModule that may contain extra functions.
     """
 
-    if mode == "bytecode":
+    if exec_mode == "bytecode":
         return _ffi_api.VMCodeGen(builder, mod)  # type:ignore
-    if mode == "compiled":
+    if exec_mode == "compiled":
         return _ffi_api.VMTIRCodeGen(builder, mod)  # type: ignore
     raise ValueError("Unknown exec_mode %s" % exec_mode)
 
@@ -532,7 +532,7 @@ def build(
     mod: tvm.IRModule,
     target: Union[str, tvm.target.Target],
     params: Optional[Dict[str, list]] = None,
-    exec_mode: = "bytecode"
+    exec_mode: str = "bytecode"
 ) -> Executable:
     """
     Build an IRModule to VM executable.
