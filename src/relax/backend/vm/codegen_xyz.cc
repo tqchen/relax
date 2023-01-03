@@ -33,6 +33,7 @@
 #include <tvm/relax/op_attr_types.h>
 #include <tvm/target/target.h>
 #include <tvm/tir/function.h>
+#include <tvm/tir/stmt.h>
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/expr.h>
 
@@ -45,15 +46,36 @@ namespace tvm {
 namespace relax {
 namespace relax_vm {
 
+using vm::VMFuncInfo;
+
 /*!
  * \brief A class to generate VMTIR for Relax functions.
+ *
+ * \note Skip CallPacked with special attrs for now, as they can be
+ *       further simplified with PrimValue.
  */
 class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
  public:
   explicit CodeGenVMTIR(relax::ExecBuilder builder, IRModule ctx_mod)
       : builder_(builder), ctx_mod_(ctx_mod) {}
 
- protected:
+  static IRModule Run(relax::ExecBuilder builder, IRModule mod) {
+    IRModule res_mod({});
+    CodeGenVMTIR codegen(builder, mod);
+    // Remove relax function and turn into TIR func.
+    for (auto& p : mod->functions) {
+      if (auto* func = p.second.as<FunctionNode>()) {
+        auto tir_func = codegen.Codegen(GetRef<Function>(func));
+        auto gsymbol =  func->GetAttr<String>(tvm::attr::kGlobalSymbol);
+        res_mod->Add(res_mod->GetGlobalVar(gsymbol.value()), tir_func);
+      } else {
+        res_mod->Add(p.first, p.second);
+      }
+    }
+    return res_mod;
+  }
+
+ private:
   int64_t NewRegister() { return registers_num_++; }
 
   static IntImm ConstInt64(int64_t value) {
@@ -72,9 +94,18 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
                      {const_anylist_handle_, ConstInt64(slot)});
   }
 
-  void EmitCallPacked(String name, const Array<PrimExpr>& args, int64_t dst_anylist_slot = -1) {
+  PrimExpr FuncListGet(int64_t slot) const {
+    // use 128 bits to represent any
+    return tir::Call(DataType::Handle(128), tir::builtin::anylist_getitem(),
+                     {func_anylist_handle_, ConstInt64(slot)});
+  }
+
+  void EmitStmt(tir::Stmt stmt) {
     ICHECK(!stmt_stack_.empty());
-    auto seq = &stmt_stack_.back();
+    stmt_stack_.back().emplace_back(stmt);
+  }
+
+  void EmitCallPacked(String name, const Array<PrimExpr>& args, int64_t dst_anylist_slot = -1) {
     Array<PrimExpr> all_args;
     // negative index indicate return value can be discarded, emit call_packed
     if (dst_anylist_slot >= 0) {
@@ -86,27 +117,28 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
       all_args.push_back(arg);
     }
     if (dst_anylist_slot >= 0) {
-      seq->emplace_back(
+      this->EmitStmt(
         tir::Evaluate(
           tir::Call(DataType::Int(32), tir::builtin::anylist_setitem_call_packed(), all_args)));
     } else {
-      seq->emplace_back(
+      this->EmitStmt(
         tir::Evaluate(
           tir::Call(DataType::Int(32), tir::builtin::tvm_call_packed(), all_args)));
     }
   }
 
-  Optional<PrimExpr> VisitExpr_(const FunctionNode* func) final {
+  tir::PrimFunc Codegen(const Function& func)  {
     Optional<String> gsymbol = func->GetAttr<String>(tvm::attr::kGlobalSymbol);
     ICHECK(gsymbol.defined()) << "there should be no local functions in Relax VM codegen phase. "
                                  "Did you forget to apply LambdaLift or AttachGlobalSymbol Pass?";
     // initialize the state
-    stmt_stack_ = {std::vector<tir::Stmt>()};
+    stmt_stack_ = {};
     registers_num_ = 0;
     var_map_.clear();
     ctx_ptr_ = tir::Var("ctx_ptr", DataType::Handle());
-    const_anylist_handle_ = tir::Var("clist", DataType::Handle());
-    reg_anylist_handle_ = tir::Var("rlist", DataType::Handle());
+    reg_anylist_handle_ = tir::Var("r", DataType::Handle());
+    func_anylist_handle_ = tir::Var("f", DataType::Handle());
+    const_anylist_handle_ = tir::Var("c", DataType::Handle());
 
     Array<String> param_names;
     for (Var param : func->params) {
@@ -121,18 +153,28 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
       this->var_map_.insert({func->params[i], RegListGet(r)});
     }
     size_t ret_reg = NewRegister();
-    Optional<PrimExpr> ret = ExprFunctor::VisitExpr(func->body);
 
-    if (ret.defined()) {
-      this->EmitCallPacked("vm.builtin.copy", {ret.value()}, ret_reg);
-    }
+    tir::Stmt body = WithNewScope([&]() {
+      Optional<PrimExpr> ret = ExprFunctor::VisitExpr(func->body);
+      if (ret.defined()) {
+        this->EmitCallPacked("vm.builtin.copy", {ret.value()}, ret_reg);
+      }
+    });
 
+    // Mark the function entry internally.
+    builder_->EmitFunction(gsymbol.value(), param_names.size(), param_names,
+                           VMFuncInfo::FuncKind::kVMTIRFunc, registers_num_);
     builder_->EndFunction(gsymbol.value());
-    // reset register number to be 0;
+
+    Type ret_type = VoidType();
+    Array<tir::Var> tir_params = {ctx_ptr_, reg_anylist_handle_, const_anylist_handle_, func_anylist_handle_};
+    String tir_func_name = "__vmtir__" + gsymbol.value();
+    tir::PrimFunc tir_func(tir_params, body, ret_type, {});
+    tir_func = WithAttr(tir_func, "global_symbol", tir_func_name);
     registers_num_ = 0;
     var_map_.clear();
     stmt_stack_.clear();
-    return NullOpt;
+    return tir_func;
   }
 
   Optional<PrimExpr> VisitExpr_(const SeqExprNode* op) final {
@@ -160,29 +202,132 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
                        tir::builtin::reinterpret(),
                        {IntImm(DataType::Int(64), 0)});
     }
-
-    // allocate dst register.
     int64_t dst_reg = HasVoidStructInfo(call) ?  -1 : NewRegister();
     if (call->op.as<OpNode>()) {
       if (call_node->op == call_builtin_op_) {
-    //     EmitCallBuiltin(call, dst_reg);
+        EmitCallBuiltin(call, dst_reg);
       } else if (call_node->op == alloc_storage_op_) {
         EmitAllocStorage(call, dst_reg);
       } else if (call_node->op == alloc_tensor_op_) {
-      //  EmitAllocTensor(call, dst_reg);
+        EmitAllocTensor(call, dst_reg);
       } else {
         // every "normal" operator is lowered to a global var in the IRModule. The Attrs for those
         // ops are handled in a pass when lowering them to TIR.
         LOG(FATAL) << "CodeGenVMTIR cannot handle this intrinsic now:\n" << call_node->op;
       }
     } else {
-      //EmitNormalCall(call, dst_reg);
+      EmitNormalCall(call, dst_reg);
     }
     if (dst_reg >= 0) {
       return RegListGet(dst_reg);
     } else {
       return NullOpt;
     }
+  }
+
+  Optional<PrimExpr> VisitExpr_(const IfNode* op) final {
+    // Reserve a register for return
+    size_t merge_register = NewRegister();
+    PrimExpr cond_value = this->VisitExpr(op->cond).value();
+
+    tir::Stmt true_branch = WithNewScope([&](){
+      PrimExpr true_value = this->VisitExpr(op->true_branch).value();
+      this->EmitCallPacked("vm.builtin.copy", {true_value}, merge_register);
+    });
+    tir::Stmt false_branch = WithNewScope([&](){
+      PrimExpr false_value = this->VisitExpr(op->false_branch).value();
+      this->EmitCallPacked("vm.builtin.copy", {false_value}, merge_register);
+    });
+    this->EmitStmt(tir::IfThenElse(cond_value, true_branch, false_branch));
+    return RegListGet(merge_register);
+  }
+
+  Optional<PrimExpr> VisitExpr_(const VarNode* op) final {
+    Var var = GetRef<Var>(op);
+    auto it = this->var_map_.find(var);
+    ICHECK(it != this->var_map_.end()) << "Var " << var << " is not defined";
+    return it->second;
+  }
+
+  Optional<PrimExpr> VisitExpr_(const ConstantNode* op) final {
+    return ConstListGet(builder_->ConvertConstant(op->data).value());
+  }
+
+  Optional<PrimExpr> VisitExpr_(const ShapeExprNode* op) final {
+    std::vector<int64_t> shape;
+    for (PrimExpr e : op->values) {
+      if (auto* int_value = e.as<IntImmNode>()) {
+        shape.push_back(int_value->value);
+      } else {
+        LOG(FATAL) << "Should only use constant shape after shape lowering: " << op->values;
+      }
+    }
+    return ConstListGet(builder_->ConvertConstant(ShapeTuple(shape)).value());
+  }
+
+  Optional<PrimExpr> VisitExpr_(const TupleNode* op) final {
+    Tuple tuple = GetRef<Tuple>(op);
+    Array<PrimExpr> args;
+    for (auto arg : tuple->fields) {
+      args.push_back(this->VisitExpr(arg).value());
+    }
+    int32_t dst_register = NewRegister();
+    this->EmitCallPacked("runtime.Tuple", args, dst_register);
+    return RegListGet(dst_register);
+  }
+
+  Optional<PrimExpr> VisitExpr_(const TupleGetItemNode* op) final {
+    TupleGetItem expr = GetRef<TupleGetItem>(op);
+    Array<PrimExpr> args = {this->VisitExpr(expr->tuple).value()};
+
+    args.push_back(ConstInt64(expr->index));
+
+    int64_t dst_register = NewRegister();
+    this->EmitCallPacked("vm.builtin.tuple_getitem", args, dst_register);
+    return RegListGet(dst_register);
+  }
+
+  // Lookup the function and see if it matches
+  Optional<String> LookupFunction(const Expr& expr, VMFuncInfo::FuncKind* kind) {
+    if (auto* ext_func = expr.as<ExternFuncNode>()) {
+      *kind = VMFuncInfo::FuncKind::kPackedFunc;
+      return ext_func->global_symbol;
+    } else if (auto* gvar_ptr = expr.as<GlobalVarNode>()) {
+      GlobalVar gvar = GetRef<GlobalVar>(gvar_ptr);
+      // Run a look up in the env to see if it maps to an extern func.
+      auto it = ctx_mod_->functions.find(gvar);
+      if (it != ctx_mod_->functions.end()) {
+        BaseFunc func = (*it).second;
+        if (auto* efunc = func.as<ExternFuncNode>()) {
+          *kind = VMFuncInfo::FuncKind::kPackedFunc;
+          return efunc->global_symbol;
+        } else if (func.as<FunctionNode>()) {
+          *kind = VMFuncInfo::FuncKind::kVMFunc;
+          return gvar->name_hint;
+        } else {
+          *kind = VMFuncInfo::FuncKind::kPackedFunc;
+          return gvar->name_hint;
+        }
+      }
+      // undefined global var, consider eliminate later.
+      *kind = VMFuncInfo::FuncKind::kPackedFunc;
+      return gvar->name_hint;
+    } else {
+      return NullOpt;
+    }
+  }
+
+  Optional<PrimExpr> VisitExpr_(const GlobalVarNode* op) final {
+    VMFuncInfo::FuncKind kind;
+    auto symbol = LookupFunction(GetRef<Expr>(op), &kind);
+    ICHECK(symbol.defined());
+    builder_->DeclareFunction(symbol.value(), kind);
+    return FuncListGet(builder_->GetFunction(symbol.value()).value());
+  }
+
+  Optional<PrimExpr> VisitExpr_(const ExternFuncNode* op) final {
+    builder_->DeclareFunction(op->global_symbol, VMFuncInfo::FuncKind::kPackedFunc);
+    return FuncListGet(builder_->GetFunction(op->global_symbol).value());
   }
 
   void EmitAllocStorage(const Call& call_node, int64_t dst_reg) {
@@ -250,13 +395,48 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
     this->EmitCallPacked(func->global_symbol, args, dst_reg);
   }
 
+  void EmitNormalCall(const Call& call_node, int64_t dst_reg) {
+    VMFuncInfo::FuncKind kind;
+    auto symbol = LookupFunction(call_node->op, &kind);
+    Array<PrimExpr> args = VisitArray(call_node->args);
 
+    if (symbol.defined()) {
+      this->EmitCallPacked(symbol.value(), args, dst_reg);
+    } else {
+      Array<PrimExpr> all_args;
+      all_args.push_back(ctx_ptr_);
+      all_args.push_back(this->VisitExpr(call_node->op).value());
+      for (auto arg: args) {
+        all_args.push_back(arg);
+      }
+      this->EmitCallPacked("vm.builtin.invoke_closure", all_args, dst_reg);
+    }
+  }
+
+  template<typename FLambda>
+  tir::Stmt WithNewScope(const FLambda& callback) {
+    stmt_stack_.push_back({});
+    callback();
+    tir::Stmt stmt = tir::SeqStmt::Flatten(stmt_stack_.back());
+    stmt_stack_.pop_back();
+    return stmt;
+  }
+
+  Array<PrimExpr> VisitArray(const Array<Expr>& arr) {
+    Array<PrimExpr> ret;
+    for (size_t i = 0; i < arr.size(); ++i) {
+      ret.push_back(this->VisitExpr(arr[i]).value());
+    }
+    return ret;
+  }
   /*! \brief Internal ExecBuilder. */
   relax::ExecBuilder builder_;
   /*! \brief List to ctx_ptr */
   tir::Var ctx_ptr_;
   /*! \brief List to store temp object registers */
   tir::Var reg_anylist_handle_;
+  /*! \brief List to store closures */
+  tir::Var func_anylist_handle_;
   /*! \brief List to store constants */
   tir::Var const_anylist_handle_;
   /*!
@@ -278,11 +458,15 @@ class CodeGenVMTIR : public ExprFunctor<Optional<PrimExpr>(const Expr&)> {
 };
 
 /*!
- * \brief Create the Relax VM executable.
+ * \brief Create the Relax VM executable from all relax.Function in mod.
+ *        and add them to exec_builder. Create extra TIR functions.
+ *
+ * \param exec_builder Builder to collect executables.
+ * \param mod Input module.
+ * \return Extra TIR module created.
  */
-Array<ObjectRef> VMTIRCodeGen(IRModule mod, Target target) {
-  // TODO(relax-team) Revisit the param and ext_lib options.
-  return {};
+IRModule VMTIRCodeGen(ExecBuilder exec_builder, IRModule mod) {
+  return CodeGenVMTIR::Run(exec_builder, mod);
 }
 
 TVM_REGISTER_GLOBAL("relax.VMTIRCodeGen").set_body_typed(VMTIRCodeGen);
