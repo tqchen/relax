@@ -237,6 +237,18 @@ class VirtualMachineImpl : public VirtualMachine {
 
  protected:
   /*!
+   * \brief Get function by querying all of the current module's imports.
+   * \param name The name of the function.
+   * \return The result function, can return PackedFunc(nullptr) if nothing is found.
+   */
+  PackedFunc GetFuncFromImports(const String& name) {
+    for (auto& lib : this->imports_) {
+      PackedFunc func = lib->GetFunction(name, true);
+      if (func.defined()) return func;
+    }
+    return PackedFunc(nullptr);
+  }
+  /*!
    * \brief Initialize function pool.
    */
   void InitFuncPool();
@@ -564,18 +576,46 @@ VMClosure VirtualMachineImpl::GetClosure(const String& func_name) {
   CHECK(it != exec_->func_map.end()) << "ValueError: Unknown function: " << func_name;
 
   Index gf_idx = it->second;
-  // NOTE: should not capture strong ref to self and avoid cyclic ref.
-  auto impl = PackedFunc([gf_idx](TVMArgs args, TVMRetValue* rv) {
-    // Per convention, ctx ptr is a VirtualMachine*
-    VirtualMachine* ctx_ptr = static_cast<VirtualMachine*>(args[0].operator void*());
+  const VMFuncInfo& finfo = exec_->func_table[gf_idx];
 
-    std::vector<RegType> inputs(args.size() - 1);
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      inputs[i] = args[i + 1];
-    }
-    *rv = static_cast<VirtualMachineImpl*>(ctx_ptr)->Invoke(gf_idx, inputs);
-  });
-  return VMClosure(func_name, impl);
+  if (finfo.kind == VMFuncInfo::FuncKind::kVMFunc) {
+    // NOTE: should not capture strong ref to self and avoid cyclic ref.
+    auto impl = PackedFunc([gf_idx](TVMArgs args, TVMRetValue* rv) {
+      // Per convention, ctx ptr is a VirtualMachine*
+      VirtualMachine* ctx_ptr = static_cast<VirtualMachine*>(args[0].operator void*());
+
+      std::vector<RegType> inputs(args.size() - 1);
+      for (size_t i = 0; i < inputs.size(); ++i) {
+        inputs[i] = args[i + 1];
+      }
+      *rv = static_cast<VirtualMachineImpl*>(ctx_ptr)->Invoke(gf_idx, inputs);
+    });
+    return VMClosure(func_name, impl);
+  } else {
+    ICHECK(finfo.kind == VMFuncInfo::FuncKind::kVMTIRFunc)
+      << "Cannot support closure with function kind " << static_cast<int>(finfo.kind);
+    PackedFunc tir_func = GetFuncFromImports("__vmtir__" + finfo.name);
+    ICHECK(tir_func != nullptr)
+      << "Cannot find underlying compiled tir function of VMTIRFunc " << finfo.name;
+    auto impl = PackedFunc([this, finfo, tir_func](TVMArgs args, TVMRetValue* rv) {
+      // Per convention, ctx ptr is a VirtualMachine*
+      VirtualMachine* ctx_ptr = static_cast<VirtualMachine*>(args[0].operator void*());
+      ICHECK(ctx_ptr == this);
+      ICHECK_EQ(args.size() - 1, finfo.num_args)
+        << "Function " << finfo.name << " expects " << finfo.num_args << " arguments";
+      ICHECK_GE(finfo.register_file_size, finfo.num_args + 1);
+      std::vector<TVMRetValue> reg_file(finfo.register_file_size);
+      for (size_t i = 0; i < finfo.num_args; ++i) {
+        reg_file[i] = args[i + 1];
+      }
+      void* reg_anylist_handle = reg_file.data();
+      void* func_anylist_handle = this->func_pool_.data();
+      void* const_anylist_handle = this->const_pool_.data();
+      tir_func(static_cast<void*>(ctx_ptr), reg_anylist_handle, const_anylist_handle, func_anylist_handle);
+      *rv = reg_file[finfo.num_args + 1];
+    });
+    return VMClosure(func_name, impl);
+  }
 }
 
 //--------------------------------------------------------------------
@@ -608,19 +648,11 @@ RegType VirtualMachineImpl::Invoke(Index gf_idx, const std::vector<RegType>& arg
 void VirtualMachineImpl::InitFuncPool() {
   func_pool_.resize(exec_->func_table.size());
 
-  auto query_imports = [this](const String& name) -> PackedFunc {
-    for (auto lib : this->imports_) {
-      PackedFunc func = lib->GetFunction(name, true);
-      if (func.defined()) return func;
-    }
-    return PackedFunc(nullptr);
-  };
-
   for (size_t func_index = 0; func_index < exec_->func_table.size(); ++func_index) {
     const VMFuncInfo& info = exec_->func_table[func_index];
     if (info.kind == VMFuncInfo::FuncKind::kPackedFunc) {
       // only look through imports first
-      PackedFunc func = query_imports(info.name);
+      PackedFunc func = GetFuncFromImports(info.name);
       if (!func.defined()) {
         const PackedFunc* p_func = Registry::Get(info.name);
         if (p_func != nullptr) func = *(p_func);
@@ -632,10 +664,9 @@ void VirtualMachineImpl::InitFuncPool() {
       func_pool_[func_index] = func;
 
     } else {
-      ICHECK(info.kind == VMFuncInfo::FuncKind::kVMFunc);
+      ICHECK(info.kind == VMFuncInfo::FuncKind::kVMFunc ||
+             info.kind == VMFuncInfo::FuncKind::kVMTIRFunc);
       auto clo = this->GetClosure(info.name);
-      ICHECK(clo.defined()) << "Error: Cannot find global function " << info.name
-                            << " in function table";
       func_pool_[func_index] = clo;
     }
   }

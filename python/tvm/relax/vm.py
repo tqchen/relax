@@ -453,6 +453,7 @@ class VirtualMachine(object):
 def _vmcodegen(
     builder: "relax.ExecBuilder",
     mod: tvm.IRModule,
+    exec_mode: str = "bytecode",
 ) -> tvm.IRModule:
     """Running VM codegen.
 
@@ -464,13 +465,20 @@ def _vmcodegen(
     mod: IRModule
         The input IRModule to be built.
 
+    exec_mode: {"bytecode", "compiled"}
+        The execution mode.
+
     Return
     ------
     leftover: IRModule
         Left over IRModule that may contain extra functions.
     """
-    return _ffi_api.VMCodeGen(builder, mod)  # type: ignore
 
+    if mode == "bytecode":
+        return _ffi_api.VMCodeGen(builder, mod)  # type:ignore
+    if mode == "compiled":
+        return _ffi_api.VMTIRCodeGen(builder, mod)  # type: ignore
+    raise ValueError("Unknown exec_mode %s" % exec_mode)
 
 def _vmlink(
     builder: "relax.ExecBuilder",
@@ -524,6 +532,7 @@ def build(
     mod: tvm.IRModule,
     target: Union[str, tvm.target.Target],
     params: Optional[Dict[str, list]] = None,
+    exec_mode: = "bytecode"
 ) -> Executable:
     """
     Build an IRModule to VM executable.
@@ -545,6 +554,9 @@ def build(
 
     params: Optional[Dict[str, list]]
         Parameters for the input IRModule that will be bound.
+
+    exec_mode: {"bytecode", "compiled"}
+        The execution mode.
 
     Returns
     -------
@@ -586,7 +598,8 @@ def build(
 
     # builder collects the executable
     builder = relax.ExecBuilder()
-    _vmcodegen(builder, rx_mod)
+    extra_mod = _vmcodegen(builder, rx_mod, exec_mode=exec_mode)
+    tir_mod.update(extra_mod)
     return _vmlink(builder, target, tir_mod, ext_libs, params)
 
 
