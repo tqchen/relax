@@ -19,9 +19,11 @@
 Restrictions: all shape lowered, explicit allocation.
 """
 import tvm
+import tvm.testing
 from tvm import relax
-from tvm.script import relax as R, tir as T
-from tvm.ir.base import assert_structural_equal
+from tvm.ir import assert_structural_equal
+from tvm.script import relax as R
+from tvm.script import tir as T
 
 
 def get_tir_mod(mod):
@@ -116,7 +118,10 @@ def test_if_cond():
         @T.prim_func
         def __vmtir__ife(ctx_ptr: T.handle, r: T.handle, c: T.handle, f: T.handle):
             T.func_attr({"global_symbol": "__vmtir__ife"})
-            if T.cast(T.tvm_call_packed("vm.builtin.read_if_cond", T.anylist_getitem(r, T.int32(0))), "bool"):
+            if T.cast(
+                T.tvm_call_packed("vm.builtin.read_if_cond", T.anylist_getitem(r, T.int32(0))),
+                "bool",
+            ):
                 T.anylist_setitem_call_packed(
                     r,
                     T.int32(4),
@@ -181,3 +186,39 @@ def test_const():
     expected = Expected
     after = get_tir_mod(before)
     assert_structural_equal(expected, after)
+
+
+def test_const_call():
+    @tvm.script.ir_module
+    class Before:
+        @R.function
+        def main(x: R.Tensor):
+            R.func_attr({"global_symbol": "main"})
+            y = R.const([1, 2])
+            z = R.call_packed("test.vm.add", x, y, type_args=(R.Tensor))
+            return z
+
+    @tvm.script.ir_module
+    class Expected:
+        @T.prim_func
+        def __vmtir__main(ctx_ptr: T.handle, r: T.handle, c: T.handle, f: T.handle):
+            # function attr dict
+            T.func_attr({"global_symbol": "__vmtir__main"})
+            # body
+            T.anylist_setitem_call_packed(
+                r,
+                2,
+                "test.vm.add",
+                T.anylist_getitem(r, 0),
+                T.anylist_getitem(c, 0),
+            )
+            T.anylist_setitem_call_packed(r, 1, "vm.builtin.copy", T.anylist_getitem(r, 2))
+
+    before = Before
+    expected = Expected
+    after = get_tir_mod(before)
+    assert_structural_equal(expected, after)
+
+
+if __name__ == "__main__":
+    tvm.testing.main()
