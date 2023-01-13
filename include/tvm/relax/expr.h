@@ -528,6 +528,138 @@ class Constant : public Expr {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(ConstantNode);
 };
 
+/*!
+ * \brief PrimValue.
+ *
+ * Expression representing a TIR POD expression.
+ */
+class PrimValueNode : public ExprNode {
+ public:
+  /*! \brief The prim expr representing the value */
+  PrimExpr value;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("value", &value);
+    v->Visit("struct_info_", &struct_info_);
+    v->Visit("_checked_type_", &checked_type_);
+    v->Visit("span", &span);
+  }
+
+  bool SEqualReduce(const PrimValueNode* other, SEqualReducer equal) const {
+    // struct info can be deterministically derived from data.
+    return equal(value, other->value);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce(value); }
+
+  static constexpr const char* _type_key = "relax.expr.PrimValue";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PrimValueNode, ExprNode);
+};
+
+/*!
+ * \brief Managed reference to PrimValueNode
+ * \sa PrimValeNode
+ */
+class PrimValue : public Expr {
+ public:
+  /*!
+   * \brief The constructor
+   * \param value The value input.
+   * \param span The source span of the expression.
+   */
+  TVM_DLL explicit PrimValue(PrimExpr value, Span span = Span());
+
+  TVM_DEFINE_OBJECT_REF_METHODS(PrimValue, Expr, PrimValueNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(PrimValueNode);
+};
+
+/*!
+ * \brief Represent a string literal constant.
+ */
+class StringImmNode : public ExprNode {
+ public:
+  /*! \brief The data value. */
+  String value;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("value", &value);
+    v->Visit("struct_info_", &struct_info_);
+    v->Visit("_checked_type_", &checked_type_);
+    v->Visit("span", &span);
+  }
+
+  bool SEqualReduce(const PrimValueNode* other, SEqualReducer equal) const {
+    // struct info can be deterministically derived from data.
+    return equal(value, other->value);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce(value); }
+
+  static constexpr const char* _type_key = "relax.expr.StringImm";
+  TVM_DECLARE_FINAL_OBJECT_INFO(StringImmNode, ExprNode);
+};
+
+/*!
+ * \brief Managed reference to StringImm
+ * \sa StringImmNode
+ */
+class StringImm : public Expr {
+ public:
+  /*!
+   * \brief The constructor
+   * \param value The value input.
+   * \param span The source span of the expression.
+   */
+  TVM_DLL explicit StringImm(String value, Span span = Span());
+
+  TVM_DEFINE_OBJECT_REF_METHODS(StringImm, Expr, StringImmNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(StringImmNode);
+};
+
+/*!
+ * \brief Represent a data type constant.
+ */
+class DataTypeImmNode : public ExprNode {
+ public:
+  /*! \brief The data value. */
+  DataType value;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("value", &value);
+    v->Visit("struct_info_", &struct_info_);
+    v->Visit("_checked_type_", &checked_type_);
+    v->Visit("span", &span);
+  }
+
+  bool SEqualReduce(const DataTypeImmNode* other, SEqualReducer equal) const {
+    // struct info can be deterministically derived from data.
+    return equal(value, other->value);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce(value); }
+
+  static constexpr const char* _type_key = "relax.expr.DataTypeImm";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DataTypeImmNode, ExprNode);
+};
+
+/*!
+ * \brief Managed reference to DataTypeImm
+ * \sa DataTypeImmNode
+ */
+class DataTypeImm : public Expr {
+ public:
+  /*!
+   * \brief The constructor
+   * \param value The value input.
+   * \param span The source span of the expression.
+   */
+  TVM_DLL explicit DataTypeImm(DataType value, Span span = Span());
+
+  TVM_DEFINE_OBJECT_REF_METHODS(DataTypeImm, Expr, DataTypeImmNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(DataTypeImmNode);
+};
+
+
 /*! \brief The base class of a variable binding in Relax. */
 class BindingNode : public Object {
  public:
