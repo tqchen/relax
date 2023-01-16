@@ -547,10 +547,10 @@ class PrimValueNode : public ExprNode {
 
   bool SEqualReduce(const PrimValueNode* other, SEqualReducer equal) const {
     // struct info can be deterministically derived from data.
-    return equal.DefEqual(value, other->value);
+    return equal(value, other->value);
   }
 
-  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce.DefHash(value); }
+  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce(value); }
 
   static constexpr const char* _type_key = "relax.expr.PrimValue";
   TVM_DECLARE_FINAL_OBJECT_INFO(PrimValueNode, ExprNode);
