@@ -22,10 +22,19 @@ import inspect
 from typing import Dict, List, Optional, Tuple, Union
 
 import tvm
-from tvm.ir import Type
-from tvm import relax
-from tvm.relax import Call, Expr, ExternFunc, TupleGetItem, Var, const
-from tvm.relax.struct_info import StructInfo
+from tvm import relax, DataType
+from tvm.ir import Type, PrimExpr
+from tvm.relax import (
+    Call,
+    DataTypeImm,
+    Expr,
+    ExternFunc,
+    PrimValue,
+    StringImm,
+    TupleGetItem,
+    Var,
+    const,
+)
 from tvm.relax.analysis import get_static_type
 
 ############################### Operators ###############################
@@ -35,9 +44,8 @@ from tvm.relax.op import (
     astype,
     broadcast_to,
     builtin,
-    null_value,
-    call_tir,
     call_builtin,
+    call_tir,
     concat,
     cos,
     divide,
@@ -65,6 +73,7 @@ from tvm.relax.op import (
     negative,
     nn,
     not_equal,
+    null_value,
     ones,
     ones_like,
     permute_dims,
@@ -91,8 +100,10 @@ from tvm.relax.op import (
     zeros,
     zeros_like,
 )
+from tvm.relax.struct_info import StructInfo
 from tvm.relax.utils import convert_to_expr
-from tvm.runtime import Object as tvm_Object, ObjectGeneric
+from tvm.runtime import Object as tvm_Object
+from tvm.runtime import ObjectGeneric
 
 from . import _ffi_api, frame
 
@@ -100,6 +111,7 @@ from . import _ffi_api, frame
 
 py_print = print
 py_tuple = tuple
+py_str = str
 
 
 ############################### Function ################################
@@ -382,6 +394,51 @@ def tuple(*fields: List[Expr]) -> Expr:
     return relax.Tuple(fields)  # pylint: disable=no-member # type: ignore
 
 
+############################### PrimValue ##############################
+
+
+def prim_value(value: PrimExpr) -> Expr:
+    """Create a prim value expression.
+    Parameters
+    ----------
+    value : PrimExpr
+        The value of the prim value.
+    Returns
+    -------
+    res : Expr
+        The result prim value.
+    """
+    return relax.PrimValue(value)  # pylint: disable=no-member # type: ignore
+
+
+def str(value: py_str) -> Expr:
+    """Create a string imm expression.
+    Parameters
+    ----------
+    value : str
+        The value of the str.
+    Returns
+    -------
+    res : Expr
+        The result str.
+    """
+    return relax.StringImm(value)  # pylint: disable=no-member # type: ignore
+
+
+def dtype(value: Union[py_str, DataType]) -> Expr:
+    """Create a dtype imm expression.
+    Parameters
+    ----------
+    value : dtype
+        The value of the dtype.
+    Returns
+    -------
+    res : Expr
+        The result dtype.
+    """
+    return relax.DataTypeImm(value)  # pylint: disable=no-member # type: ignore
+
+
 ############################### Importer ###############################
 
 __all__ = [
@@ -404,6 +461,7 @@ __all__ = [
     "const",
     "dataflow",
     "divide",
+    "dtype",
     "emit",
     "emit_match_cast",
     "equal",
@@ -439,6 +497,7 @@ __all__ = [
     "ones_like",
     "output",
     "permute_dims",
+    "prim_value",
     "print",
     "prod",
     "reshape",
@@ -449,6 +508,7 @@ __all__ = [
     "sqrt",
     "squeeze",
     "std",
+    "str",
     "strided_slice",
     "subtract",
     "sum",

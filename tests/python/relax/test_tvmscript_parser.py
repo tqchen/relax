@@ -905,6 +905,18 @@ def test_arith_operators():
     _check(foo, bb.get()["foo"])
 
 
+def test_prim_value():
+    @R.function
+    def foo():
+        gv1 = R.prim_value(1)
+        gv2 = R.prim_value(tir.Var("n", "int64"))
+        gv3 = R.str("test_string")
+        gv4 = R.dtype("float32")
+        return gv1, gv2, gv3, gv4
+
+    _check(foo, None)
+
+
 @pytest.mark.skip(reason="potential upstream Metadata changes.")
 def test_meta():
     metadata = tvm.ir.load_json(

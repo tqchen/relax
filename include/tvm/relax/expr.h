@@ -547,10 +547,10 @@ class PrimValueNode : public ExprNode {
 
   bool SEqualReduce(const PrimValueNode* other, SEqualReducer equal) const {
     // struct info can be deterministically derived from data.
-    return equal(value, other->value);
+    return equal.DefEqual(value, other->value);
   }
 
-  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce(value); }
+  void SHashReduce(SHashReducer hash_reduce) const { hash_reduce.DefHash(value); }
 
   static constexpr const char* _type_key = "relax.expr.PrimValue";
   TVM_DECLARE_FINAL_OBJECT_INFO(PrimValueNode, ExprNode);
@@ -588,7 +588,7 @@ class StringImmNode : public ExprNode {
     v->Visit("span", &span);
   }
 
-  bool SEqualReduce(const PrimValueNode* other, SEqualReducer equal) const {
+  bool SEqualReduce(const StringImmNode* other, SEqualReducer equal) const {
     // struct info can be deterministically derived from data.
     return equal(value, other->value);
   }
@@ -658,7 +658,6 @@ class DataTypeImm : public Expr {
   TVM_DEFINE_OBJECT_REF_METHODS(DataTypeImm, Expr, DataTypeImmNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(DataTypeImmNode);
 };
-
 
 /*! \brief The base class of a variable binding in Relax. */
 class BindingNode : public Object {
