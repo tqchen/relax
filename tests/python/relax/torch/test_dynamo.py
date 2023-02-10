@@ -20,14 +20,13 @@ import tvm
 from tvm import relax, meta_schedule as ms, tir
 import tvm.testing
 from tvm.script.parser import relax as R, tir as T
+import torch
+import torch._dynamo as dynamo
+from tvm.relax.frontend.torch.dynamo import relax_dynamo
 
 
 @pytest.mark.skip(reason="Dynamo is not supported in the CI yet.")
 def test_relax_dynamo():
-    import torch
-    import torch._dynamo as dynamo
-    from tvm.relax.frontend.torch.dynamo import relax_dynamo
-
     class Input1(torch.nn.Module):
         def __init__(self):
             super().__init__()
